@@ -8,6 +8,7 @@ import CameraScreen from './screens/CameraScreen';
 import NewNoteScreen from './screens/NewNoteScreen';
 import VoiceNoteScreen from './screens/VoiceNoteScreen';
 import UploadScreen from './screens/UploadScreen';
+import ChatScreen from './screens/ChatScreen';
 
 const Stack = createStackNavigator();
 
@@ -20,14 +21,7 @@ function App() {
             name="Home" 
             component={HomeScreen}
             options={{
-              title: 'Poopy Head Note',
-              headerStyle: {
-                backgroundColor: '#f4511e',
-              },
-              headerTintColor: '#fff',
-              headerTitleStyle: {
-                fontWeight: 'bold',
-              },
+              headerShown: false
             }}
           />
           <Stack.Screen 
@@ -35,7 +29,7 @@ function App() {
             component={CameraScreen} 
             options={{
               title: 'Take Photo',
-              headerStyle: { backgroundColor: '#f4511e' },
+              headerStyle: { backgroundColor: '#1C1C1E' },
               headerTintColor: '#fff',
             }}
           />
@@ -44,7 +38,7 @@ function App() {
             component={NewNoteScreen} 
             options={{
               title: 'New Note',
-              headerStyle: { backgroundColor: '#f4511e' },
+              headerStyle: { backgroundColor: '#1C1C1E' },
               headerTintColor: '#fff',
             }}
           />
@@ -53,7 +47,7 @@ function App() {
             component={VoiceNoteScreen} 
             options={{
               title: 'Voice Note',
-              headerStyle: { backgroundColor: '#f4511e' },
+              headerStyle: { backgroundColor: '#1C1C1E' },
               headerTintColor: '#fff',
             }}
           />
@@ -62,8 +56,15 @@ function App() {
             component={UploadScreen} 
             options={{
               title: 'Choose Photo',
-              headerStyle: { backgroundColor: '#f4511e' },
+              headerStyle: { backgroundColor: '#1C1C1E' },
               headerTintColor: '#fff',
+            }}
+          />
+          <Stack.Screen 
+            name="Chat" 
+            component={ChatScreen} 
+            options={{
+              headerShown: false,
             }}
           />
         </Stack.Navigator>
@@ -79,7 +80,7 @@ const styles = StyleSheet.create({
     width: '100%',
     alignSelf: 'center',
     height: '100vh',
-    backgroundColor: '#fff',
+    backgroundColor: '#1C1C1E',
     margin: '0 auto',
     position: 'relative',
     left: '50%',
