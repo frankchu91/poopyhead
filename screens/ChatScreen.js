@@ -19,6 +19,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { Audio } from 'expo-av';
+import * as Clipboard from 'expo-clipboard';
 
 export default function ChatScreen({ navigation, route }) {
   const [messages, setMessages] = useState([]);
@@ -28,16 +29,15 @@ export default function ChatScreen({ navigation, route }) {
   const [recordingTime, setRecordingTime] = useState(0);
   const [editingMessage, setEditingMessage] = useState(null);
   const [editText, setEditText] = useState('');
-  const [showMergeOptions, setShowMergeOptions] = useState(false);
-  const [selectedMessage, setSelectedMessage] = useState(null);
-  const [draggedMessage, setDraggedMessage] = useState(null);
-  const [dragY, setDragY] = useState(new Animated.Value(0));
-  const [isDragging, setIsDragging] = useState(false);
+  const [contextMenuVisible, setContextMenuVisible] = useState(false);
+  const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
+  const [activeMessage, setActiveMessage] = useState(null);
+  const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
+  const [selectedMessages, setSelectedMessages] = useState([]);
   
   const flatListRef = useRef(null);
   const timerRef = useRef(null);
   const soundRef = useRef(null);
-  const messageRefs = useRef({});
 
   // 清理函数
   useEffect(() => {
@@ -51,71 +51,159 @@ export default function ChatScreen({ navigation, route }) {
     };
   }, []);
 
-  // 创建拖拽处理器
-  const createPanResponder = (message) => {
-    return PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, gestureState) => {
-        // 只有垂直移动超过10才开始拖拽
-        return Math.abs(gestureState.dy) > 10;
-      },
-      onPanResponderGrant: () => {
-        // 开始拖拽
-        setDraggedMessage(message);
-        setIsDragging(true);
-        dragY.setValue(0);
-        Vibration.vibrate(50);
-      },
-      onPanResponderMove: (_, gestureState) => {
-        // 更新拖拽位置
-        dragY.setValue(gestureState.dy);
-      },
-      onPanResponderRelease: (_, gestureState) => {
-        // 结束拖拽
-        setIsDragging(false);
-        
-        // 如果移动距离足够大，重新排序消息
-        if (Math.abs(gestureState.dy) > 50) {
-          reorderMessages(message, gestureState.dy);
-        }
-        
-        // 重置拖拽状态
-        Animated.spring(dragY, {
-          toValue: 0,
-          useNativeDriver: true,
-        }).start(() => {
-          setDraggedMessage(null);
-        });
-      }
-    });
-  };
-
-  // 重新排序消息
-  const reorderMessages = (message, dy) => {
-    const messageIndex = messages.findIndex(m => m.id === message.id);
-    if (messageIndex === -1) return;
+  // 显示上下文菜单
+  const showContextMenu = (message, event) => {
+    // 获取触摸位置
+    const { pageX, pageY } = event.nativeEvent;
     
-    // 计算新位置
-    let newIndex = messageIndex;
-    if (dy < 0) {
-      // 向上移动
-      newIndex = Math.max(0, messageIndex - 1);
+    setContextMenuPosition({ x: pageX, y: pageY });
+    setActiveMessage(message);
+    setContextMenuVisible(true);
+    
+    // 提供触觉反馈
+    Vibration.vibrate(50);
+  };
+  
+  // 关闭上下文菜单
+  const hideContextMenu = () => {
+    setContextMenuVisible(false);
+  };
+  
+  // 复制消息
+  const copyMessage = (message) => {
+    if (message.type === 'text') {
+      Clipboard.setString(message.text);
+      hideContextMenu();
+      // 可以添加一个提示，表示已复制
+    }
+  };
+  
+  // 进入多选模式
+  const enterMultiSelectMode = () => {
+    setIsMultiSelectMode(true);
+    if (activeMessage) {
+      setSelectedMessages([activeMessage.id]);
+    }
+    hideContextMenu();
+  };
+  
+  // 退出多选模式
+  const exitMultiSelectMode = () => {
+    setIsMultiSelectMode(false);
+    setSelectedMessages([]);
+  };
+  
+  // 切换消息选择状态
+  const toggleMessageSelection = (messageId) => {
+    if (isMultiSelectMode) {
+      setSelectedMessages(prev => 
+        prev.includes(messageId)
+          ? prev.filter(id => id !== messageId)
+          : [...prev, messageId]
+      );
+    }
+  };
+  
+  // 合并选中的消息
+  const mergeSelectedMessages = () => {
+    if (selectedMessages.length < 2) return;
+    
+    // 获取选中的消息
+    const messagesToMerge = messages.filter(msg => 
+      selectedMessages.includes(msg.id)
+    ).sort((a, b) => {
+      // 按照在原数组中的顺序排序
+      return messages.findIndex(m => m.id === a.id) - messages.findIndex(m => m.id === b.id);
+    });
+    
+    // 检查是否都是文本消息
+    const allTextMessages = messagesToMerge.every(msg => msg.type === 'text');
+    
+    if (allTextMessages) {
+      // 合并文本消息
+      const mergedText = messagesToMerge.map(msg => msg.text).join('\n\n');
+      
+      const mergedMessage = {
+        id: Date.now().toString(),
+        text: mergedText,
+        type: 'text',
+        timestamp: new Date(),
+        isCombined: true
+      };
+      
+      // 更新消息列表
+      setMessages(prevMessages => 
+        prevMessages
+          .filter(msg => !selectedMessages.includes(msg.id))
+          .concat(mergedMessage)
+      );
     } else {
-      // 向下移动
-      newIndex = Math.min(messages.length - 1, messageIndex + 1);
+      // 创建组合消息
+      const combinedMessage = {
+        id: Date.now().toString(),
+        type: 'combined',
+        messages: messagesToMerge,
+        timestamp: new Date(),
+        isCombined: true
+      };
+      
+      // 更新消息列表
+      setMessages(prevMessages => 
+        prevMessages
+          .filter(msg => !selectedMessages.includes(msg.id))
+          .concat(combinedMessage)
+      );
     }
     
-    // 如果位置没变，不做任何操作
-    if (newIndex === messageIndex) return;
+    // 退出多选模式
+    exitMultiSelectMode();
+  };
+  
+  // 删除选中的消息
+  const deleteSelectedMessages = () => {
+    if (selectedMessages.length === 0) return;
     
-    // 创建新的消息数组
-    const newMessages = [...messages];
-    const [movedMessage] = newMessages.splice(messageIndex, 1);
-    newMessages.splice(newIndex, 0, movedMessage);
+    Alert.alert(
+      "Delete Messages",
+      `Are you sure you want to delete ${selectedMessages.length} message(s)?`,
+      [
+        {
+          text: "Cancel",
+          style: "cancel"
+        },
+        { 
+          text: "Delete", 
+          onPress: () => {
+            setMessages(prevMessages => 
+              prevMessages.filter(msg => !selectedMessages.includes(msg.id))
+            );
+            exitMultiSelectMode();
+          },
+          style: "destructive"
+        }
+      ]
+    );
+  };
+  
+  // 引用消息
+  const quoteMessage = (message) => {
+    // 创建引用文本
+    let quoteText = '';
     
-    // 更新状态
-    setMessages(newMessages);
-    Vibration.vibrate(50);
+    if (message.type === 'text') {
+      quoteText = `> ${message.text}\n\n`;
+    } else if (message.type === 'image') {
+      quoteText = '> [Image]\n\n';
+    } else if (message.type === 'audio') {
+      quoteText = '> [Audio]\n\n';
+    }
+    
+    // 设置到输入框
+    setInputText(quoteText + inputText);
+    hideContextMenu();
+    
+    // 聚焦输入框
+    // 这里需要一个输入框的ref，暂时省略
   };
 
   // 发送文本消息
@@ -224,17 +312,8 @@ export default function ChatScreen({ navigation, route }) {
       );
     }
     
-    setShowMergeOptions(false);
-    setSelectedMessage(null);
-  };
-
-  // 显示合并选项
-  const showMergeOptionsModal = (message) => {
-    if (selectedMessage && selectedMessage.id !== message.id) {
-      setShowMergeOptions(true);
-    } else {
-      setSelectedMessage(message);
-    }
+    setIsMultiSelectMode(false);
+    setSelectedMessages([]);
   };
 
   // 开始录音
@@ -418,158 +497,120 @@ export default function ChatScreen({ navigation, route }) {
 
   // 渲染消息项
   const renderMessageItem = ({ item }) => {
-    const isSelected = selectedMessage && selectedMessage.id === item.id;
-    const isDragged = draggedMessage && draggedMessage.id === item.id;
+    const isSelected = selectedMessages.includes(item.id);
     
-    // 创建该消息的拖拽处理器
-    const panResponder = createPanResponder(item);
-    
-    // 计算拖拽样式
-    const dragStyle = isDragged ? {
-      transform: [{ translateY: dragY }],
-      zIndex: 100,
-      elevation: 5,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 5 },
-      shadowOpacity: 0.3,
-      shadowRadius: 5,
-    } : {};
-    
+    // 如果是编辑状态，显示编辑界面
+    if (editingMessage && editingMessage.id === item.id) {
+      return (
+        <View style={styles.editContainer}>
+          <TextInput
+            style={styles.editInput}
+            value={editText}
+            onChangeText={setEditText}
+            multiline
+            autoFocus
+          />
+          <View style={styles.editButtons}>
+            <TouchableOpacity style={styles.editButton} onPress={cancelEdit}>
+              <Text style={styles.editButtonText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.editButton} onPress={saveEditedMessage}>
+              <Text style={[styles.editButtonText, styles.saveButtonText]}>Save</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      );
+    }
+
     return (
-      <Animated.View 
-        style={[
-          styles.messageWrapper,
-          dragStyle
-        ]}
-        {...panResponder.panHandlers}
-        ref={ref => messageRefs.current[item.id] = ref}
+      <TouchableOpacity
+        activeOpacity={0.8}
+        onLongPress={(event) => {
+          if (!isMultiSelectMode) {
+            showContextMenu(item, event);
+          }
+        }}
+        onPress={() => {
+          if (isMultiSelectMode) {
+            toggleMessageSelection(item.id);
+          }
+        }}
       >
-        <TouchableOpacity 
-          style={[
-            styles.messageContainer,
-            item.isCombined && styles.combinedMessageContainer,
-            isSelected && styles.selectedMessageContainer,
-            isDragged && styles.draggingMessageContainer
-          ]}
-          onLongPress={() => showMergeOptionsModal(item)}
-          delayLongPress={300}
-        >
-          {/* 编辑状态 */}
-          {editingMessage && editingMessage.id === item.id ? (
-            <View style={styles.editContainer}>
-              <TextInput
-                style={styles.editInput}
-                value={editText}
-                onChangeText={setEditText}
-                multiline
-                autoFocus
-              />
-              <View style={styles.editButtons}>
-                <TouchableOpacity 
-                  style={styles.editButton}
-                  onPress={cancelEdit}
-                >
-                  <Text style={styles.editButtonText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity 
-                  style={styles.editButton}
-                  onPress={saveEditedMessage}
-                >
-                  <Text style={[styles.editButtonText, styles.saveButtonText]}>Save</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          ) : (
-            <>
-              {/* 消息内容 */}
-              {item.type === 'text' && (
-                <Text style={styles.messageText}>{item.text}</Text>
-              )}
-              
-              {item.type === 'image' && (
-                <Image 
-                  source={{ uri: item.image }} 
-                  style={styles.messageImage}
-                  resizeMode="cover"
-                />
-              )}
-              
-              {item.type === 'audio' && (
-                <TouchableOpacity 
-                  style={styles.audioContainer}
-                  onPress={() => playAudio(item.audio)}
-                >
-                  <Ionicons name="play" size={20} color="#fff" />
-                  <Text style={styles.audioDuration}>{item.duration}s</Text>
-                </TouchableOpacity>
-              )}
-              
-              {item.type === 'combined' && (
-                <View style={styles.combinedContent}>
-                  {item.messages.map((subMsg, index) => (
-                    <View key={index} style={styles.combinedItem}>
-                      {subMsg.type === 'text' && (
-                        <Text style={styles.messageText}>{subMsg.text}</Text>
-                      )}
-                      
-                      {subMsg.type === 'image' && (
-                        <Image 
-                          source={{ uri: subMsg.image }} 
-                          style={styles.combinedImage}
-                          resizeMode="cover"
-                        />
-                      )}
-                      
-                      {subMsg.type === 'audio' && (
-                        <TouchableOpacity 
-                          style={styles.audioContainer}
-                          onPress={() => playAudio(subMsg.audio)}
-                        >
-                          <Ionicons name="play" size={20} color="#fff" />
-                          <Text style={styles.audioDuration}>{subMsg.duration}s</Text>
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                  ))}
-                </View>
-              )}
-              
-              {item.edited && (
-                <Text style={styles.editedTag}>(edited)</Text>
-              )}
-              
-              <Text style={styles.timestamp}>
-                {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-              </Text>
-              
-              {/* 消息操作按钮 */}
-              <View style={styles.messageActions}>
-                {item.type === 'text' && (
-                  <TouchableOpacity 
-                    style={styles.actionButton}
-                    onPress={() => startEditMessage(item)}
-                  >
-                    <Ionicons name="pencil" size={16} color="#fff" />
-                  </TouchableOpacity>
-                )}
-                
-                <TouchableOpacity 
-                  style={styles.actionButton}
-                  onPress={() => deleteMessage(item.id)}
-                >
-                  <Ionicons name="trash" size={16} color="#FF453A" />
-                </TouchableOpacity>
-              </View>
-            </>
+        <View style={[
+          styles.messageContainer,
+          isSelected && styles.selectedMessageContainer,
+          item.isCombined && styles.combinedMessageContainer
+        ]}>
+          {/* 消息内容 */}
+          {item.type === 'text' && (
+            <Text style={styles.messageText}>{item.text}</Text>
           )}
-        </TouchableOpacity>
-      </Animated.View>
+          
+          {item.type === 'image' && (
+            <Image source={{ uri: item.image }} style={styles.messageImage} />
+          )}
+          
+          {item.type === 'audio' && (
+            <TouchableOpacity 
+              style={styles.audioContainer}
+              onPress={() => playAudio(item.audio)}
+            >
+              <Ionicons name="play" size={24} color="#fff" />
+              <Text style={styles.audioDuration}>
+                {Math.floor(item.duration / 60)}:{(item.duration % 60).toString().padStart(2, '0')}
+              </Text>
+            </TouchableOpacity>
+          )}
+          
+          {item.type === 'combined' && (
+            <View style={styles.combinedContent}>
+              {item.messages.map((subMsg, index) => (
+                <View key={index} style={styles.combinedItem}>
+                  {subMsg.type === 'text' && (
+                    <Text style={styles.messageText}>{subMsg.text}</Text>
+                  )}
+                  {subMsg.type === 'image' && (
+                    <Image source={{ uri: subMsg.image }} style={styles.combinedImage} />
+                  )}
+                  {subMsg.type === 'audio' && (
+                    <TouchableOpacity 
+                      style={styles.audioContainer}
+                      onPress={() => playAudio(subMsg.audio)}
+                    >
+                      <Ionicons name="play" size={20} color="#fff" />
+                      <Text style={styles.audioDuration}>
+                        {Math.floor(subMsg.duration / 60)}:{(subMsg.duration % 60).toString().padStart(2, '0')}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ))}
+            </View>
+          )}
+          
+          {/* 时间戳 */}
+          <Text style={styles.timestamp}>
+            {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            {item.edited && ' (edited)'}
+          </Text>
+          
+          {/* 多选模式下显示选择指示器 */}
+          {isMultiSelectMode && (
+            <View style={styles.selectionIndicator}>
+              <Ionicons 
+                name={isSelected ? "checkmark-circle" : "ellipse-outline"} 
+                size={24} 
+                color={isSelected ? "#007AFF" : "#8E8E93"} 
+              />
+            </View>
+          )}
+        </View>
+      </TouchableOpacity>
     );
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* 顶部标题栏 */}
       <View style={styles.header}>
         <TouchableOpacity 
           style={styles.backButton}
@@ -577,15 +618,42 @@ export default function ChatScreen({ navigation, route }) {
         >
           <Ionicons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
-        
         <Text style={styles.headerTitle}>New Note</Text>
-        
-        <TouchableOpacity style={styles.headerButton}>
-          <Ionicons name="ellipsis-horizontal" size={24} color="#fff" />
-        </TouchableOpacity>
+        {isMultiSelectMode ? (
+          <View style={styles.multiSelectControls}>
+            <TouchableOpacity 
+              style={styles.headerButton}
+              onPress={exitMultiSelectMode}
+            >
+              <Ionicons name="close" size={24} color="#fff" />
+            </TouchableOpacity>
+            {selectedMessages.length > 0 && (
+              <>
+                <TouchableOpacity 
+                  style={styles.headerButton}
+                  onPress={mergeSelectedMessages}
+                  disabled={selectedMessages.length < 2}
+                >
+                  <Ionicons 
+                    name="git-merge" 
+                    size={24} 
+                    color={selectedMessages.length < 2 ? "#555" : "#fff"} 
+                  />
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={styles.headerButton}
+                  onPress={deleteSelectedMessages}
+                >
+                  <Ionicons name="trash" size={24} color="#FF453A" />
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        ) : (
+          <View style={{ width: 24 }} />
+        )}
       </View>
       
-      {/* 消息列表 */}
       <FlatList
         ref={flatListRef}
         style={styles.messageList}
@@ -593,48 +661,51 @@ export default function ChatScreen({ navigation, route }) {
         data={messages}
         keyExtractor={(item) => item.id}
         renderItem={renderMessageItem}
-        scrollEnabled={!isDragging}
       />
       
       {/* 底部输入区域 */}
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
+        {/* 工具栏 */}
         <View style={styles.inputContainer}>
-          {/* 工具栏 */}
+          {/* 工具按钮行 */}
           <View style={styles.toolbarRow}>
             <TouchableOpacity 
               style={[
                 styles.toolbarButton,
                 isRecording && styles.activeToolbarButton
               ]}
-              onPressIn={!isRecording ? startRecording : undefined}
-              onPressOut={isRecording ? stopRecording : undefined}
+              onPressIn={startRecording}
+              onPressOut={stopRecording}
             >
-              <Ionicons name="mic" size={24} color={isRecording ? "#FF453A" : "#007AFF"} />
+              <Ionicons name="mic" size={24} color="#fff" />
               {isRecording && (
                 <View style={styles.recordingIndicator}>
-                  <Text style={styles.recordingTimeSmall}>{recordingTime}s</Text>
+                  <Text style={styles.recordingTimeSmall}>
+                    {Math.floor(recordingTime / 60)}:{(recordingTime % 60).toString().padStart(2, '0')}
+                  </Text>
                 </View>
               )}
             </TouchableOpacity>
             
             <TouchableOpacity 
               style={styles.toolbarButton}
-              onPress={pickImage}
+              onPress={takePhoto}
             >
-              <Ionicons name="image" size={24} color="#007AFF" />
+              <Ionicons name="camera" size={24} color="#fff" />
             </TouchableOpacity>
             
             <TouchableOpacity 
               style={styles.toolbarButton}
-              onPress={takePhoto}
+              onPress={pickImage}
             >
-              <Ionicons name="camera" size={24} color="#007AFF" />
+              <Ionicons name="image" size={24} color="#fff" />
             </TouchableOpacity>
           </View>
           
-          {/* 文本输入和发送按钮 */}
+          {/* 文本输入行 */}
           <View style={styles.inputRow}>
             <TextInput
               style={styles.textInput}
@@ -661,42 +732,77 @@ export default function ChatScreen({ navigation, route }) {
         </View>
       </KeyboardAvoidingView>
       
-      {/* 合并选项模态框 */}
+      {/* 上下文菜单 */}
       <Modal
-        visible={showMergeOptions}
+        visible={contextMenuVisible}
         transparent
         animationType="fade"
-        onRequestClose={() => setShowMergeOptions(false)}
+        onRequestClose={hideContextMenu}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.mergeOptionsContainer}>
-            <Text style={styles.mergeTitle}>Merge Messages</Text>
+        <TouchableOpacity 
+          style={styles.contextMenuOverlay}
+          activeOpacity={1}
+          onPress={hideContextMenu}
+        >
+          <View 
+            style={[
+              styles.contextMenu,
+              {
+                left: contextMenuPosition.x,
+                top: contextMenuPosition.y,
+                // 确保菜单不会超出屏幕边界
+                transform: [
+                  { translateX: -100 }, // 向左偏移，避免超出右边界
+                  { translateY: 10 }    // 向下偏移，避免被手指遮挡
+                ]
+              }
+            ]}
+          >
+            {activeMessage?.type === 'text' && (
+              <TouchableOpacity 
+                style={styles.contextMenuItem}
+                onPress={() => copyMessage(activeMessage)}
+              >
+                <Ionicons name="copy-outline" size={20} color="#fff" />
+                <Text style={styles.contextMenuText}>Copy</Text>
+              </TouchableOpacity>
+            )}
             
             <TouchableOpacity 
-              style={styles.mergeOption}
-              onPress={() => {
-                const otherMessage = messages.find(m => m.id !== selectedMessage.id);
-                if (otherMessage) {
-                  mergeMessages(selectedMessage, otherMessage);
-                }
-              }}
+              style={styles.contextMenuItem}
+              onPress={() => deleteMessage(activeMessage?.id)}
             >
-              <Ionicons name="git-merge" size={24} color="#007AFF" />
-              <Text style={styles.mergeOptionText}>Merge Messages</Text>
+              <Ionicons name="trash-outline" size={20} color="#fff" />
+              <Text style={styles.contextMenuText}>Delete</Text>
             </TouchableOpacity>
             
             <TouchableOpacity 
-              style={[styles.mergeOption, styles.cancelOption]}
-              onPress={() => {
-                setShowMergeOptions(false);
-                setSelectedMessage(null);
-              }}
+              style={styles.contextMenuItem}
+              onPress={enterMultiSelectMode}
             >
-              <Ionicons name="close-circle" size={24} color="#FF453A" />
-              <Text style={[styles.mergeOptionText, styles.cancelText]}>Cancel</Text>
+              <Ionicons name="checkbox-outline" size={20} color="#fff" />
+              <Text style={styles.contextMenuText}>Select</Text>
             </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.contextMenuItem}
+              onPress={() => quoteMessage(activeMessage)}
+            >
+              <Ionicons name="return-down-back-outline" size={20} color="#fff" />
+              <Text style={styles.contextMenuText}>Quote</Text>
+            </TouchableOpacity>
+            
+            {activeMessage?.type === 'text' && (
+              <TouchableOpacity 
+                style={styles.contextMenuItem}
+                onPress={() => startEditMessage(activeMessage)}
+              >
+                <Ionicons name="pencil-outline" size={20} color="#fff" />
+                <Text style={styles.contextMenuText}>Edit</Text>
+              </TouchableOpacity>
+            )}
           </View>
-        </View>
+        </TouchableOpacity>
       </Modal>
     </SafeAreaView>
   );
@@ -934,5 +1040,42 @@ const styles = StyleSheet.create({
   },
   cancelText: {
     color: '#FF453A',
+  },
+  selectionIndicator: {
+    position: 'absolute',
+    left: -8,
+    top: '50%',
+    transform: [{ translateY: -12 }],
+  },
+  multiSelectControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  contextMenuOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  contextMenu: {
+    position: 'absolute',
+    backgroundColor: '#2C2C2E',
+    borderRadius: 12,
+    padding: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  contextMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#3A3A3C',
+  },
+  contextMenuText: {
+    color: '#fff',
+    fontSize: 16,
+    marginLeft: 12,
   },
 }); 
