@@ -1,0 +1,27 @@
+/* 在项目根目录创建这个文件 */
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background-color: #f0f0f0;
+  display: flex;
+  justify-content: center;
+}
+
+#root {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* 添加媒体查询，在小屏幕上移除阴影和边距 */
+@media (max-width: 500px) {
+  #root {
+    box-shadow: none;
+    width: 100%;
+    position: relative;
+    left: auto;
+    transform: none;
+  }
+} 
