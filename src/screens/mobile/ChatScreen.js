@@ -66,6 +66,9 @@ export default function MobileChatScreen({ navigation, route }) {
   const flatListRef = useRef(null);
   const listRef = useRef(null);
 
+  // 添加一个状态来跟踪是否曾经进入过自由模式
+  const [hasUsedFreeMode, setHasUsedFreeMode] = useState(false);
+
   // 滚动到底部
   useEffect(() => {
     if (flatListRef.current && messages.length > 0 && !freePositionMode) {
@@ -75,17 +78,40 @@ export default function MobileChatScreen({ navigation, route }) {
     }
   }, [messages, freePositionMode]);
 
-  // 添加一个明确的切换函数
+  // 修改切换函数，记录是否使用过自由模式
   const toggleFreeMode = () => {
     console.log('Button pressed!');
     console.log('Current freePositionMode:', freePositionMode);
-    console.log('Setting to:', !freePositionMode);
-    setFreePositionMode(!freePositionMode);
     
-    // 延迟检查状态是否更新
-    setTimeout(() => {
-      console.log('After update, freePositionMode:', freePositionMode);
-    }, 100);
+    // 如果要进入自由模式，标记为已使用
+    if (!freePositionMode) {
+      setHasUsedFreeMode(true);
+      
+      // 如果是第一次进入自由模式，为所有消息设置初始位置
+      if (!hasUsedFreeMode) {
+        const initialPositions = {};
+        messages.forEach((msg, index) => {
+          // 只设置还没有位置的消息
+          if (!messagePositions[msg.id]) {
+            initialPositions[msg.id] = {
+              x: 20,
+              y: 20 + index * 80
+            };
+          }
+        });
+        
+        // 更新位置
+        if (Object.keys(initialPositions).length > 0) {
+          setMessagePositions(prev => ({
+            ...prev,
+            ...initialPositions
+          }));
+        }
+      }
+    }
+    
+    // 切换自由模式
+    setFreePositionMode(!freePositionMode);
   };
 
   // 开始拖拽
@@ -361,6 +387,19 @@ export default function MobileChatScreen({ navigation, route }) {
           </>
         ) : (
           <>
+            {hasUsedFreeMode && (
+              <TouchableOpacity 
+                style={styles.headerButton}
+                onPress={() => {
+                  // 重置布局
+                  setHasUsedFreeMode(false);
+                  setMessagePositions({});
+                  setFreePositionMode(false);
+                }}
+              >
+                <Ionicons name="refresh" size={24} color="#fff" />
+              </TouchableOpacity>
+            )}
             <TouchableOpacity 
               style={styles.headerButton}
               onPress={toggleMultiSelectMode}
@@ -395,6 +434,9 @@ export default function MobileChatScreen({ navigation, route }) {
         <Text style={styles.debugText}>
           Free Mode: {freePositionMode ? 'ON' : 'OFF'}
         </Text>
+        <Text style={styles.debugText}>
+          Has Used Free Mode: {hasUsedFreeMode ? 'YES' : 'NO'}
+        </Text>
         {draggingMessageId && (
           <Text style={styles.debugText}>
             Dragging: {draggingMessageId}
@@ -405,16 +447,59 @@ export default function MobileChatScreen({ navigation, route }) {
       {/* 多选工具栏 */}
       {renderMultiSelectToolbar()}
       
-      {/* 消息列表 */}
+      {/* 消息列表 - 修改这部分 */}
       <View 
         style={styles.messagesContainer} 
         ref={listRef}
       >
-        {freePositionMode ? (
+        {/* 如果正在自由模式或曾经使用过自由模式，使用自由定位布局 */}
+        {(freePositionMode || hasUsedFreeMode) ? (
           <View style={styles.freePositionContainer}>
-            {messages.map((item, index) => renderMessageItem({ item, index }))}
+            {messages.map((item, index) => {
+              // 使用保存的位置或默认位置
+              const position = messagePositions[item.id] || { 
+                x: 20, 
+                y: 20 + index * 80 
+              };
+              
+              // 只在自由模式下允许拖拽
+              const panHandlers = freePositionMode ? 
+                createPanResponder(item.id).panHandlers : {};
+              
+              const isDragging = draggingMessageId === item.id;
+              
+              return (
+                <Animated.View 
+                  key={item.id}
+                  style={[
+                    styles.freePositionMessage,
+                    {
+                      left: position.x, 
+                      top: position.y,
+                      zIndex: isDragging ? 100 : 10,
+                    },
+                    isDragging && styles.draggingMessage
+                  ]}
+                  {...panHandlers}
+                >
+                  <MessageBubble
+                    message={item}
+                    isSelected={selectedMessages.includes(item.id)}
+                    isMultiSelectMode={isMultiSelectMode}
+                    onLongPress={(event) => showContextMenu(item, event.nativeEvent)}
+                    onPress={() => {
+                      if (isMultiSelectMode) {
+                        toggleMessageSelection(item.id);
+                      }
+                    }}
+                    onPlayAudio={playAudio}
+                  />
+                </Animated.View>
+              );
+            })}
           </View>
         ) : (
+          // 从未使用过自由模式，使用普通列表
           <FlatList
             ref={flatListRef}
             data={messages}

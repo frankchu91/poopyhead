@@ -68,6 +68,25 @@ export default function useChatLogic() {
     };
     
     setMessages(prev => [...prev, newMessage]);
+    
+    // 如果已经有消息位置数据，为新消息设置一个合理的位置
+    if (Object.keys(messagePositions).length > 0) {
+      // 找到现有消息中 y 坐标最大的
+      let maxY = 0;
+      Object.values(messagePositions).forEach(pos => {
+        if (pos.y > maxY) maxY = pos.y;
+      });
+      
+      // 在最下方消息下方放置新消息
+      setMessagePositions(prev => ({
+        ...prev,
+        [newMessage.id]: {
+          x: 20,
+          y: maxY + 80
+        }
+      }));
+    }
+    
     setInputText('');
   };
 
