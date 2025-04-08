@@ -2,19 +2,29 @@ import 'react-native-gesture-handler';
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, View, Platform, TouchableOpacity, Text, Dimensions } from 'react-native';
 import HomeScreen from './screens/HomeScreen';
 import CameraScreen from './screens/CameraScreen';
 import NewNoteScreen from './screens/NewNoteScreen';
 import VoiceNoteScreen from './screens/VoiceNoteScreen';
 import UploadScreen from './screens/UploadScreen';
-import ChatScreen from './screens/ChatScreen';
+import MobileChatScreen from './src/screens/mobile/ChatScreen';
+import WebChatScreen from './src/screens/web/ChatScreen';
 
 const Stack = createStackNavigator();
 
 function App() {
+  // 根据平台决定容器样式和聊天组件
+  const containerStyle = Platform.OS === 'web' 
+    ? styles.webContainer 
+    : styles.mobileContainer;
+  
+  const ChatScreenComponent = Platform.OS === 'web'
+    ? WebChatScreen
+    : MobileChatScreen;
+
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, containerStyle]}>
       <NavigationContainer>
         <Stack.Navigator initialRouteName="Home">
           <Stack.Screen 
@@ -62,7 +72,7 @@ function App() {
           />
           <Stack.Screen 
             name="Chat" 
-            component={ChatScreen} 
+            component={ChatScreenComponent}
             options={{
               headerShown: false,
             }}
@@ -76,15 +86,19 @@ function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#1C1C1E',
+  },
+  mobileContainer: {
+    // 移动端样式
     maxWidth: 500,
     width: '100%',
     alignSelf: 'center',
+  },
+  webContainer: {
+    // Web端样式 - 更宽的布局
+    maxWidth: '100%',
+    width: '100%',
     height: '100vh',
-    backgroundColor: '#1C1C1E',
-    margin: '0 auto',
-    position: 'relative',
-    left: '50%',
-    transform: 'translateX(-50%)',
   },
 });
 

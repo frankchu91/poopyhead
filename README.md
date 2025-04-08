@@ -1,6 +1,10 @@
-# Poopy Head Note
+# 多平台聊天应用
 
-A mobile application that helps users capture images and add notes (text or audio) to them.
+这是一个使用 React Native 和 Expo 构建的多平台聊天应用，支持移动端和 Web 端，并为每个平台提供了优化的 UI 和交互体验。
+
+## 项目架构
+
+项目采用了清晰的分层架构，将业务逻辑与 UI 表现分离：
 
 ## Features
 

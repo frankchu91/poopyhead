@@ -34,11 +34,116 @@ export default function ChatScreen({ navigation, route }) {
   const [activeMessage, setActiveMessage] = useState(null);
   const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
   const [selectedMessages, setSelectedMessages] = useState([]);
+  const [draggingIndex, setDraggingIndex] = useState(null);
+  const [messagePositions, setMessagePositions] = useState({});
+  const [listHeight, setListHeight] = useState(0);
+  const [freePositionMode, setFreePositionMode] = useState(false);
+  const [listWidth, setListWidth] = useState(0);
+  const [initialPositionsSet, setInitialPositionsSet] = useState(false);
+  const [draggingId, setDraggingId] = useState(null);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [selectedBubble, setSelectedBubble] = useState(null);
+  const [bubbleRefs, setBubbleRefs] = useState({});
   
   const flatListRef = useRef(null);
   const timerRef = useRef(null);
   const soundRef = useRef(null);
+  const pan = useRef(new Animated.ValueXY()).current;
+  const panResponder = useRef(null);
+  const listRef = useRef(null);
 
+  // 初始化气泡位置的更好方法
+  useEffect(() => {
+    if (freePositionMode && !initialPositionsSet && messages.length > 0) {
+      // 首先使用当前布局中估计的位置
+      const initialPositions = {};
+      const scrollY = flatListRef.current?._listRef?._scrollMetrics?.offset || 0;
+      
+      messages.forEach((message, index) => {
+        // 计算位置时考虑滚动偏移量
+        initialPositions[message.id] = {
+          x: 20,
+          y: (index * 60) - scrollY
+        };
+      });
+      
+      setMessagePositions(initialPositions);
+      setInitialPositionsSet(true);
+    }
+  }, [freePositionMode, messages, initialPositionsSet]);
+  
+  // 创建专门为 Web 版本优化的拖拽处理器
+  useEffect(() => {
+    if (freePositionMode) {
+      panResponder.current = PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: (_, gesture) => {
+          return Math.abs(gesture.dx) > 3 || Math.abs(gesture.dy) > 3;
+        },
+        onPanResponderGrant: (evt, gesture) => {
+          // 查找被点击的气泡
+          const { pageX, pageY } = evt.nativeEvent;
+          let foundIndex = -1;
+          
+          // 检查每个消息的位置
+          for (let i = 0; i < messages.length; i++) {
+            const msgId = messages[i].id;
+            const pos = messagePositions[msgId];
+            
+            if (pos) {
+              // 气泡的尺寸
+              const width = 250;
+              const height = 80;
+              
+              // 检查点击是否在这个气泡内
+              if (pageX >= pos.x && pageX <= pos.x + width &&
+                  pageY >= pos.y && pageY <= pos.y + height) {
+                foundIndex = i;
+                break;
+              }
+            }
+          }
+          
+          if (foundIndex >= 0) {
+            setDraggingIndex(foundIndex);
+            setDraggingId(messages[foundIndex].id);
+            
+            // 记录初始点击位置相对于气泡左上角的偏移
+            const pos = messagePositions[messages[foundIndex].id];
+            setDragOffset({
+              x: pageX - pos.x,
+              y: pageY - pos.y
+            });
+            
+            // 在Web上可能不支持振动
+            if (Platform.OS !== 'web') {
+              Vibration.vibrate(30);
+            }
+          }
+        },
+        onPanResponderMove: (evt, gesture) => {
+          if (draggingId) {
+            const { pageX, pageY } = evt.nativeEvent;
+            
+            // 更新位置（考虑拖拽偏移）
+            setMessagePositions(prev => ({
+              ...prev,
+              [draggingId]: {
+                x: pageX - dragOffset.x,
+                y: pageY - dragOffset.y
+              }
+            }));
+          }
+        },
+        onPanResponderRelease: () => {
+          // 结束拖拽
+          setDraggingIndex(null);
+          setDraggingId(null);
+        }
+      });
+    }
+  }, [freePositionMode, messages, messagePositions, draggingId, dragOffset]);
+  
   // 清理函数
   useEffect(() => {
     return () => {
@@ -217,6 +322,18 @@ export default function ChatScreen({ navigation, route }) {
       timestamp: new Date()
     };
 
+    // 如果是自由定位模式，为新消息设置一个默认位置
+    if (freePositionMode) {
+      const lastIndex = messages.length;
+      setMessagePositions(prev => ({
+        ...prev,
+        [newMessage.id]: {
+          x: 20,
+          y: lastIndex * 60 + 20
+        }
+      }));
+    }
+
     setMessages(prevMessages => [...prevMessages, newMessage]);
     setInputText('');
     
@@ -224,6 +341,43 @@ export default function ChatScreen({ navigation, route }) {
     setTimeout(() => {
       flatListRef.current?.scrollToEnd({ animated: true });
     }, 100);
+  };
+
+  // 切换自由定位模式
+  const toggleFreePositionMode = () => {
+    // 如果进入自由模式
+    if (!freePositionMode) {
+      // 为每个消息设置初始位置
+      const initialPositions = {};
+      const flatListNode = flatListRef.current;
+      let scrollOffset = 0;
+      
+      // 在Web上，我们可能不能直接获取滚动位置
+      if (Platform.OS === 'web' && flatListNode) {
+        // 尝试获取Web滚动元素
+        scrollOffset = flatListNode.scrollTop || 0;
+      }
+      
+      messages.forEach((message, index) => {
+        initialPositions[message.id] = {
+          x: 20,
+          y: index * 60 - scrollOffset
+        };
+      });
+      
+      setMessagePositions(initialPositions);
+      setInitialPositionsSet(true);
+    }
+    
+    // 如果当前是自由定位模式，切换回普通模式时重置所有位置
+    if (freePositionMode) {
+      setMessagePositions({});
+      setInitialPositionsSet(false);
+      setDraggingId(null);
+      setDraggingIndex(null);
+    }
+    
+    setFreePositionMode(prev => !prev);
   };
 
   // 开始编辑消息
@@ -496,8 +650,9 @@ export default function ChatScreen({ navigation, route }) {
   };
 
   // 渲染消息项
-  const renderMessageItem = ({ item }) => {
+  const renderMessageItem = ({ item, index }) => {
     const isSelected = selectedMessages.includes(item.id);
+    const isBeingDragged = index === draggingIndex;
     
     // 如果是编辑状态，显示编辑界面
     if (editingMessage && editingMessage.id === item.id) {
@@ -522,90 +677,147 @@ export default function ChatScreen({ navigation, route }) {
       );
     }
 
-    return (
-      <TouchableOpacity
-        activeOpacity={0.8}
-        onLongPress={(event) => {
-          if (!isMultiSelectMode) {
-            showContextMenu(item, event);
-          }
-        }}
-        onPress={() => {
-          if (isMultiSelectMode) {
-            toggleMessageSelection(item.id);
-          }
-        }}
-      >
-        <View style={[
-          styles.messageContainer,
-          isSelected && styles.selectedMessageContainer,
-          item.isCombined && styles.combinedMessageContainer
-        ]}>
-          {/* 消息内容 */}
-          {item.type === 'text' && (
-            <Text style={styles.messageText}>{item.text}</Text>
-          )}
-          
-          {item.type === 'image' && (
-            <Image source={{ uri: item.image }} style={styles.messageImage} />
-          )}
-          
-          {item.type === 'audio' && (
-            <TouchableOpacity 
-              style={styles.audioContainer}
-              onPress={() => playAudio(item.audio)}
-            >
-              <Ionicons name="play" size={24} color="#fff" />
-              <Text style={styles.audioDuration}>
-                {Math.floor(item.duration / 60)}:{(item.duration % 60).toString().padStart(2, '0')}
+    // 在自由定位模式下，使用绝对定位
+    if (freePositionMode) {
+      // 使用保存的位置或默认位置
+      const position = messagePositions[item.id] || { x: 20, y: index * 60 };
+      
+      return (
+        <View 
+          style={[
+            {
+              position: 'absolute',
+              left: position.x, 
+              top: position.y,
+              zIndex: isBeingDragged ? 100 : 10,
+            },
+            isBeingDragged && {
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 5 },
+              shadowOpacity: 0.5,
+              shadowRadius: 10,
+              transform: [{ scale: 1.05 }]
+            }
+          ]}
+          {...(draggingId !== item.id ? panResponder.current?.panHandlers : {})}
+        >
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onLongPress={(event) => showContextMenu(item, event)}
+            onPress={() => {
+              if (isMultiSelectMode) {
+                toggleMessageSelection(item.id);
+              }
+            }}
+            delayLongPress={500}
+          >
+            <View style={[
+              styles.bubbleContainer,
+              isBeingDragged && styles.draggingBubble,
+              isSelected && styles.selectedMessageContainer,
+              item.isCombined && styles.combinedMessageContainer
+            ]}>
+              {/* 消息内容 */}
+              {item.type === 'text' && (
+                <Text style={styles.messageText}>{item.text}</Text>
+              )}
+              
+              {item.type === 'image' && (
+                <Image source={{ uri: item.image }} style={styles.messageImage} />
+              )}
+              
+              {item.type === 'audio' && (
+                <TouchableOpacity 
+                  style={styles.audioContainer}
+                  onPress={() => playAudio(item.audio)}
+                >
+                  <Ionicons name="play" size={24} color="#fff" />
+                  <Text style={styles.audioDuration}>
+                    {Math.floor(item.duration / 60)}:{(item.duration % 60).toString().padStart(2, '0')}
+                  </Text>
+                </TouchableOpacity>
+              )}
+              
+              {/* 时间戳 */}
+              <Text style={styles.timestamp}>
+                {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                {item.edited && ' (edited)'}
               </Text>
-            </TouchableOpacity>
-          )}
-          
-          {item.type === 'combined' && (
-            <View style={styles.combinedContent}>
-              {item.messages.map((subMsg, index) => (
-                <View key={index} style={styles.combinedItem}>
-                  {subMsg.type === 'text' && (
-                    <Text style={styles.messageText}>{subMsg.text}</Text>
-                  )}
-                  {subMsg.type === 'image' && (
-                    <Image source={{ uri: subMsg.image }} style={styles.combinedImage} />
-                  )}
-                  {subMsg.type === 'audio' && (
-                    <TouchableOpacity 
-                      style={styles.audioContainer}
-                      onPress={() => playAudio(subMsg.audio)}
-                    >
-                      <Ionicons name="play" size={20} color="#fff" />
-                      <Text style={styles.audioDuration}>
-                        {Math.floor(subMsg.duration / 60)}:{(subMsg.duration % 60).toString().padStart(2, '0')}
-                      </Text>
-                    </TouchableOpacity>
-                  )}
+              
+              {/* 多选模式下显示选择指示器 */}
+              {isMultiSelectMode && (
+                <View style={styles.selectionIndicator}>
+                  <Ionicons 
+                    name={isSelected ? "checkmark-circle" : "ellipse-outline"} 
+                    size={24} 
+                    color={isSelected ? "#007AFF" : "#8E8E93"} 
+                  />
                 </View>
-              ))}
+              )}
             </View>
-          )}
-          
-          {/* 时间戳 */}
-          <Text style={styles.timestamp}>
-            {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-            {item.edited && ' (edited)'}
-          </Text>
-          
-          {/* 多选模式下显示选择指示器 */}
-          {isMultiSelectMode && (
-            <View style={styles.selectionIndicator}>
-              <Ionicons 
-                name={isSelected ? "checkmark-circle" : "ellipse-outline"} 
-                size={24} 
-                color={isSelected ? "#007AFF" : "#8E8E93"} 
-              />
-            </View>
-          )}
+          </TouchableOpacity>
         </View>
-      </TouchableOpacity>
+      );
+    }
+    
+    // 普通模式下的渲染
+    return (
+      <Animated.View style={[
+        styles.messageWrapper,
+        isBeingDragged && {
+          transform: [
+            { translateX: pan.x },
+            { translateY: pan.y }
+          ],
+          zIndex: 100,
+          elevation: 5
+        }
+      ]}>
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onLongPress={(event) => showContextMenu(item, event)}
+          onPress={() => {
+            if (isMultiSelectMode) {
+              toggleMessageSelection(item.id);
+            }
+          }}
+          delayLongPress={500}
+        >
+          <View style={[
+            styles.messageContainer,
+            isBeingDragged && styles.draggingMessageContainer,
+            isSelected && styles.selectedMessageContainer,
+            item.isCombined && styles.combinedMessageContainer
+          ]}>
+            {/* 消息内容 */}
+            {item.type === 'text' && (
+              <Text style={styles.messageText}>{item.text}</Text>
+            )}
+            
+            {item.type === 'image' && (
+              <Image source={{ uri: item.image }} style={styles.messageImage} />
+            )}
+            
+            {item.type === 'audio' && (
+              <TouchableOpacity 
+                style={styles.audioContainer}
+                onPress={() => playAudio(item.audio)}
+              >
+                <Ionicons name="play" size={24} color="#fff" />
+                <Text style={styles.audioDuration}>
+                  {Math.floor(item.duration / 60)}:{(item.duration % 60).toString().padStart(2, '0')}
+                </Text>
+              </TouchableOpacity>
+            )}
+            
+            {/* 时间戳 */}
+            <Text style={styles.timestamp}>
+              {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              {item.edited && ' (edited)'}
+            </Text>
+          </View>
+        </TouchableOpacity>
+      </Animated.View>
     );
   };
 
@@ -650,18 +862,53 @@ export default function ChatScreen({ navigation, route }) {
             )}
           </View>
         ) : (
-          <View style={{ width: 24 }} />
+          <TouchableOpacity 
+            style={styles.headerButton}
+            onPress={toggleFreePositionMode}
+          >
+            <Ionicons 
+              name={freePositionMode ? "grid" : "move"} 
+              size={24} 
+              color={freePositionMode ? "#007AFF" : "#fff"} 
+            />
+          </TouchableOpacity>
         )}
       </View>
       
-      <FlatList
-        ref={flatListRef}
-        style={styles.messageList}
-        contentContainerStyle={styles.messageListContent}
-        data={messages}
-        keyExtractor={(item) => item.id}
-        renderItem={renderMessageItem}
-      />
+      <View 
+        style={[
+          styles.messageListContainer,
+          freePositionMode && styles.freeModeBg
+        ]} 
+        ref={listRef}
+        onLayout={(event) => {
+          const { height, width } = event.nativeEvent.layout;
+          setListHeight(height);
+          setListWidth(width);
+        }}
+        {...(freePositionMode ? panResponder.current?.panHandlers : {})}
+      >
+        {freePositionMode && (
+          <View style={styles.grid}>
+            {/* 网格线或其他装饰 */}
+          </View>
+        )}
+        <FlatList
+          ref={flatListRef}
+          style={styles.messageList}
+          contentContainerStyle={[
+            styles.messageListContent,
+            freePositionMode && { 
+              height: Math.max(listHeight, messages.length * 60 + 200),
+              position: 'relative'
+            }
+          ]}
+          data={messages}
+          keyExtractor={(item) => item.id}
+          renderItem={renderMessageItem}
+          scrollEnabled={!freePositionMode}
+        />
+      </View>
       
       {/* 底部输入区域 */}
       <KeyboardAvoidingView
@@ -832,14 +1079,21 @@ const styles = StyleSheet.create({
   headerButton: {
     padding: 4,
   },
+  messageListContainer: {
+    flex: 1,
+    position: 'relative',
+  },
   messageList: {
     flex: 1,
   },
   messageListContent: {
     padding: 16,
+    position: 'relative',
+    minHeight: '100%',
   },
   messageWrapper: {
-    width: '100%',
+    marginVertical: 4,
+    position: 'relative',
   },
   messageContainer: {
     maxWidth: '80%',
@@ -849,6 +1103,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#2C2C2E',
     alignSelf: 'flex-start',
     position: 'relative',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 2,
   },
   combinedMessageContainer: {
     borderWidth: 1,
@@ -860,6 +1119,12 @@ const styles = StyleSheet.create({
   },
   draggingMessageContainer: {
     opacity: 0.8,
+    transform: [{ scale: 1.03 }],
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 5,
   },
   messageText: {
     color: '#fff',
@@ -1077,5 +1342,44 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     marginLeft: 12,
+  },
+  bubbleContainer: {
+    backgroundColor: '#2C2C2E',
+    padding: 12,
+    borderRadius: 16,
+    maxWidth: 250,
+    minWidth: 80,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  draggingBubble: {
+    opacity: 0.9,
+    transform: [{ scale: 1.05 }],
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    elevation: 10,
+  },
+  // 自由模式下的背景
+  freeModeBg: {
+    backgroundColor: '#121212',
+  },
+  // 网格背景
+  grid: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    opacity: 0.1,
+    // 在Web上创建网格背景
+    backgroundImage: Platform.OS === 'web' ? 
+      'linear-gradient(#333 1px, transparent 1px), linear-gradient(90deg, #333 1px, transparent 1px)' : 
+      undefined,
+    backgroundSize: Platform.OS === 'web' ? '20px 20px' : undefined,
   },
 }); 
