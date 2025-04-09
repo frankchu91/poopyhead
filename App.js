@@ -38,7 +38,7 @@ function App() {
             name="Camera" 
             component={CameraScreen} 
             options={{
-              title: 'Take Photo',
+              title: '拍照',
               headerStyle: { backgroundColor: '#1C1C1E' },
               headerTintColor: '#fff',
             }}

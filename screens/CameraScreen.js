@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   View, 
   Text, 
@@ -13,10 +13,10 @@ import { Ionicons } from '@expo/vector-icons';
 export default function CameraScreen({ navigation }) {
   const [hasPermission, setHasPermission] = useState(null);
   const [type, setType] = useState(Camera.Constants.Type.back);
-  const [photo, setPhoto] = useState(null);
+  const [capturedImage, setCapturedImage] = useState(null);
   const cameraRef = useRef(null);
 
-  React.useEffect(() => {
+  useEffect(() => {
     (async () => {
       const { status } = await Camera.requestCameraPermissionsAsync();
       setHasPermission(status === 'granted');
@@ -25,49 +25,52 @@ export default function CameraScreen({ navigation }) {
 
   const takePicture = async () => {
     if (cameraRef.current) {
-      const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.7,
-        base64: true,
-      });
-      setPhoto(photo);
+      const photo = await cameraRef.current.takePictureAsync();
+      setCapturedImage(photo.uri);
     }
   };
 
-  const savePhoto = () => {
-    navigation.navigate('NewNote', { 
-      photo: photo,
-      type: 'photo'
+  const sendPicture = () => {
+    // 将图片发送到聊天
+    navigation.navigate('Chat', { 
+      image: capturedImage 
     });
   };
 
+  const retakePicture = () => {
+    setCapturedImage(null);
+  };
+
   if (hasPermission === null) {
-    return <View />;
+    return <View style={styles.container}><Text style={styles.text}>请求相机权限...</Text></View>;
   }
+  
   if (hasPermission === false) {
-    return <Text>No access to camera</Text>;
+    return <View style={styles.container}><Text style={styles.text}>没有相机权限</Text></View>;
   }
 
-  if (photo) {
+  if (capturedImage) {
     return (
       <SafeAreaView style={styles.container}>
         <Image 
-          source={{ uri: photo.uri }} 
+          source={{ uri: capturedImage }} 
           style={styles.preview}
         />
-        <View style={styles.buttonContainer}>
+        <View style={styles.controls}>
           <TouchableOpacity 
             style={styles.button}
-            onPress={() => setPhoto(null)}
+            onPress={retakePicture}
           >
-            <Ionicons name="refresh" size={28} color="white" />
-            <Text style={styles.buttonText}>Retake</Text>
+            <Ionicons name="refresh" size={24} color="#fff" />
+            <Text style={styles.buttonText}>重拍</Text>
           </TouchableOpacity>
+          
           <TouchableOpacity 
-            style={[styles.button, styles.saveButton]}
-            onPress={savePhoto}
+            style={[styles.button, styles.sendButton]}
+            onPress={sendPicture}
           >
-            <Ionicons name="checkmark" size={28} color="white" />
-            <Text style={styles.buttonText}>Use Photo</Text>
+            <Ionicons name="send" size={24} color="#fff" />
+            <Text style={styles.buttonText}>发送</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -81,7 +84,7 @@ export default function CameraScreen({ navigation }) {
         type={type}
         ref={cameraRef}
       >
-        <View style={styles.buttonContainer}>
+        <View style={styles.cameraControls}>
           <TouchableOpacity
             style={styles.flipButton}
             onPress={() => {
@@ -90,15 +93,19 @@ export default function CameraScreen({ navigation }) {
                   ? Camera.Constants.Type.front
                   : Camera.Constants.Type.back
               );
-            }}>
-            <Ionicons name="camera-reverse" size={28} color="white" />
+            }}
+          >
+            <Ionicons name="camera-reverse" size={30} color="#fff" />
           </TouchableOpacity>
-          <TouchableOpacity 
+          
+          <TouchableOpacity
             style={styles.captureButton}
             onPress={takePicture}
           >
-            <View style={styles.captureInner} />
+            <View style={styles.captureButtonInner} />
           </TouchableOpacity>
+          
+          <View style={styles.placeholder} />
         </View>
       </Camera>
     </View>
@@ -108,42 +115,29 @@ export default function CameraScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#000',
   },
   camera: {
     flex: 1,
   },
-  preview: {
-    flex: 1,
-    width: '100%',
+  text: {
+    color: '#fff',
+    fontSize: 18,
+    textAlign: 'center',
+    marginTop: 40,
   },
-  buttonContainer: {
+  cameraControls: {
     position: 'absolute',
-    bottom: 0,
+    bottom: 30,
+    left: 0,
+    right: 0,
     flexDirection: 'row',
-    width: '100%',
-    padding: 20,
     justifyContent: 'space-around',
-    backgroundColor: 'rgba(0,0,0,0.3)',
-  },
-  button: {
-    backgroundColor: '#f4511e',
-    padding: 15,
-    borderRadius: 10,
     alignItems: 'center',
-    width: '45%',
-  },
-  saveButton: {
-    backgroundColor: '#4CAF50',
-  },
-  buttonText: {
-    color: 'white',
-    fontSize: 16,
-    marginTop: 5,
+    paddingHorizontal: 30,
   },
   flipButton: {
-    position: 'absolute',
-    top: -60,
-    right: 20,
+    padding: 15,
   },
   captureButton: {
     width: 70,
@@ -153,10 +147,39 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  captureInner: {
+  captureButtonInner: {
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: 'white',
+    backgroundColor: '#fff',
+  },
+  placeholder: {
+    width: 30,
+  },
+  preview: {
+    flex: 1,
+    resizeMode: 'cover',
+  },
+  controls: {
+    position: 'absolute',
+    bottom: 30,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  button: {
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    padding: 15,
+    borderRadius: 10,
+    alignItems: 'center',
+    flexDirection: 'row',
+  },
+  sendButton: {
+    backgroundColor: 'rgba(10, 132, 255, 0.8)',
+  },
+  buttonText: {
+    color: '#fff',
+    marginLeft: 8,
   },
 }); 

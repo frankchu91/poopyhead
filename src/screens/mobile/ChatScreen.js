@@ -56,18 +56,18 @@ export default function MobileChatScreen({ navigation, route }) {
     combineSelectedMessages,
     setFreePositionMode,
     setMessagePositions,
+    setMessages,
   } = useChatLogic();
 
   // 移动端特有的状态
   const [draggingMessageId, setDraggingMessageId] = useState(null);
   const [dragStartPosition, setDragStartPosition] = useState({ x: 0, y: 0 });
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [showAttachBar, setShowAttachBar] = useState(false);
+  const [hasUsedFreeMode, setHasUsedFreeMode] = useState(false);
   
   const flatListRef = useRef(null);
   const listRef = useRef(null);
-
-  // 添加一个状态来跟踪是否曾经进入过自由模式
-  const [hasUsedFreeMode, setHasUsedFreeMode] = useState(false);
 
   // 滚动到底部
   useEffect(() => {
@@ -78,7 +78,43 @@ export default function MobileChatScreen({ navigation, route }) {
     }
   }, [messages, freePositionMode]);
 
-  // 修改切换函数，记录是否使用过自由模式
+  // 处理相机返回的图片
+  useEffect(() => {
+    if (route.params?.image) {
+      // 处理从相机返回的图片
+      const newMessage = {
+        id: Date.now().toString(),
+        type: 'image',
+        image: route.params.image,
+        timestamp: new Date()
+      };
+      
+      // 添加新消息
+      setMessages(prev => [...prev, newMessage]);
+      
+      // 如果在自由模式下，设置位置
+      if (hasUsedFreeMode) {
+        // 找到现有消息中 y 坐标最大的
+        let maxY = 0;
+        Object.values(messagePositions).forEach(pos => {
+          if (pos.y > maxY) maxY = pos.y;
+        });
+        
+        setMessagePositions(prev => ({
+          ...prev,
+          [newMessage.id]: {
+            x: 20,
+            y: maxY + 100 // 图片消息高度更大，所以间距也更大
+          }
+        }));
+      }
+      
+      // 清除路由参数
+      navigation.setParams({ image: null });
+    }
+  }, [route.params?.image]);
+
+  // 切换自由模式
   const toggleFreeMode = () => {
     console.log('Button pressed!');
     console.log('Current freePositionMode:', freePositionMode);
@@ -178,10 +214,57 @@ export default function MobileChatScreen({ navigation, route }) {
     });
   };
 
+  // 渲染附件工具栏
+  const renderAttachmentBar = () => {
+    if (!showAttachBar) return null;
+    
+    return (
+      <View style={styles.attachmentBar}>
+        <TouchableOpacity 
+          style={styles.attachmentButton}
+          onPress={() => {
+            navigation.navigate('Camera');
+            setShowAttachBar(false);
+          }}
+        >
+          <View style={styles.attachmentIconContainer}>
+            <Ionicons name="camera" size={24} color="#fff" />
+          </View>
+          <Text style={styles.attachmentText}>拍照</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={styles.attachmentButton}
+          onPress={() => {
+            pickImage();
+            setShowAttachBar(false);
+          }}
+        >
+          <View style={styles.attachmentIconContainer}>
+            <Ionicons name="image" size={24} color="#fff" />
+          </View>
+          <Text style={styles.attachmentText}>相册</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={styles.attachmentButton}
+          onPress={() => {
+            // 长按录音功能保留在输入框旁边
+            setShowAttachBar(false);
+          }}
+        >
+          <View style={styles.attachmentIconContainer}>
+            <Ionicons name="mic" size={24} color="#fff" />
+          </View>
+          <Text style={styles.attachmentText}>语音</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
   // 渲染消息项
   const renderMessageItem = ({ item, index }) => {
     const isSelected = selectedMessages.includes(item.id);
-    const isDragging = draggingMessageId === item.id;
     
     // 如果是编辑状态，显示编辑界面
     if (editingMessage && editingMessage.id === item.id) {
@@ -206,48 +289,6 @@ export default function MobileChatScreen({ navigation, route }) {
       );
     }
 
-    // 在自由定位模式下，使用绝对定位
-    if (freePositionMode) {
-      // 使用保存的位置或默认位置
-      const position = messagePositions[item.id] || { 
-        x: 20, 
-        y: 20 + index * 80 
-      };
-      
-      // 为每个消息创建专用的拖拽处理器
-      const panHandlers = createPanResponder(item.id).panHandlers;
-      
-      return (
-        <Animated.View 
-          key={item.id}
-          style={[
-            styles.freePositionMessage,
-            {
-              left: position.x, 
-              top: position.y,
-              zIndex: isDragging ? 100 : 10,
-            },
-            isDragging && styles.draggingMessage
-          ]}
-          {...panHandlers}
-        >
-          <MessageBubble
-            message={item}
-            isSelected={isSelected}
-            isMultiSelectMode={isMultiSelectMode}
-            onLongPress={(event) => showContextMenu(item, event.nativeEvent)}
-            onPress={() => {
-              if (isMultiSelectMode) {
-                toggleMessageSelection(item.id);
-              }
-            }}
-            onPlayAudio={playAudio}
-          />
-        </Animated.View>
-      );
-    }
-
-    // 普通列表模式
     return (
       <View style={styles.messageItem}>
         <MessageBubble
@@ -268,18 +309,18 @@ export default function MobileChatScreen({ navigation, route }) {
 
   // 渲染上下文菜单
   const renderContextMenu = () => {
-    if (!contextMenuVisible || !activeMessage) return null;
+    if (!contextMenuVisible) return null;
     
     return (
       <Modal
-        transparent={true}
+        transparent
         visible={contextMenuVisible}
         onRequestClose={() => setContextMenuVisible(false)}
       >
         <TouchableOpacity 
           style={styles.contextMenuOverlay}
-          activeOpacity={1}
           onPress={() => setContextMenuVisible(false)}
+          activeOpacity={1}
         >
           <View 
             style={[
@@ -293,34 +334,40 @@ export default function MobileChatScreen({ navigation, route }) {
             <TouchableOpacity 
               style={styles.contextMenuItem}
               onPress={() => {
-                editMessage(activeMessage);
+                if (activeMessage) {
+                  editMessage(activeMessage);
+                }
                 setContextMenuVisible(false);
               }}
             >
-              <Ionicons name="pencil" size={20} color="#0A84FF" />
+              <Ionicons name="create" size={20} color="#fff" />
               <Text style={styles.contextMenuText}>编辑</Text>
             </TouchableOpacity>
             
             <TouchableOpacity 
               style={styles.contextMenuItem}
               onPress={() => {
-                copyMessage(activeMessage);
+                if (activeMessage) {
+                  copyMessage(activeMessage);
+                }
                 setContextMenuVisible(false);
               }}
             >
-              <Ionicons name="copy" size={20} color="#0A84FF" />
+              <Ionicons name="copy" size={20} color="#fff" />
               <Text style={styles.contextMenuText}>复制</Text>
             </TouchableOpacity>
             
             <TouchableOpacity 
               style={styles.contextMenuItem}
               onPress={() => {
-                deleteMessage(activeMessage.id);
+                if (activeMessage) {
+                  deleteMessage(activeMessage.id);
+                }
                 setContextMenuVisible(false);
               }}
             >
               <Ionicons name="trash" size={20} color="#FF453A" />
-              <Text style={styles.contextMenuText}>删除</Text>
+              <Text style={[styles.contextMenuText, { color: '#FF453A' }]}>删除</Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
@@ -334,7 +381,9 @@ export default function MobileChatScreen({ navigation, route }) {
     
     return (
       <View style={styles.multiSelectToolbar}>
-        <Text style={styles.selectedCount}>已选择 {selectedMessages.length} 条消息</Text>
+        <Text style={styles.selectedCount}>
+          已选择 {selectedMessages.length} 条消息
+        </Text>
         
         <TouchableOpacity 
           style={styles.multiSelectAction}
@@ -343,14 +392,12 @@ export default function MobileChatScreen({ navigation, route }) {
           <Ionicons name="trash" size={24} color="#FF453A" />
         </TouchableOpacity>
         
-        {selectedMessages.length >= 2 && (
-          <TouchableOpacity 
-            style={styles.multiSelectAction}
-            onPress={combineSelectedMessages}
-          >
-            <Ionicons name="git-merge" size={24} color="#0A84FF" />
-          </TouchableOpacity>
-        )}
+        <TouchableOpacity 
+          style={styles.multiSelectAction}
+          onPress={combineSelectedMessages}
+        >
+          <Ionicons name="git-merge" size={24} color="#0A84FF" />
+        </TouchableOpacity>
         
         <TouchableOpacity 
           style={styles.closeMultiSelectButton}
@@ -429,7 +476,7 @@ export default function MobileChatScreen({ navigation, route }) {
     <SafeAreaView style={styles.container}>
       {renderHeader()}
       
-      {/* 添加调试信息 */}
+      {/* 调试信息 */}
       <View style={styles.debugInfo}>
         <Text style={styles.debugText}>
           Free Mode: {freePositionMode ? 'ON' : 'OFF'}
@@ -447,9 +494,12 @@ export default function MobileChatScreen({ navigation, route }) {
       {/* 多选工具栏 */}
       {renderMultiSelectToolbar()}
       
-      {/* 消息列表 - 修改这部分 */}
+      {/* 消息列表 */}
       <View 
-        style={styles.messagesContainer} 
+        style={[
+          styles.messagesContainer,
+          showAttachBar && styles.messagesContainerWithAttachments
+        ]} 
         ref={listRef}
       >
         {/* 如果正在自由模式或曾经使用过自由模式，使用自由定位布局 */}
@@ -510,17 +560,27 @@ export default function MobileChatScreen({ navigation, route }) {
         )}
       </View>
       
+      {/* 附件工具栏 */}
+      {renderAttachmentBar()}
+      
       {/* 输入区域 */}
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
-        <View style={styles.inputContainer}>
+        <View style={[
+          styles.inputContainer,
+          showAttachBar ? { borderTopWidth: 0 } : { borderTopWidth: 1, borderTopColor: '#2C2C2E' }
+        ]}>
           <TouchableOpacity 
             style={styles.attachButton}
-            onPress={pickImage}
+            onPress={() => setShowAttachBar(!showAttachBar)}
           >
-            <Ionicons name="add-circle" size={24} color="#0A84FF" />
+            <Ionicons 
+              name={showAttachBar ? "close-circle" : "add-circle"} 
+              size={24} 
+              color="#0A84FF" 
+            />
           </TouchableOpacity>
           
           <TextInput
@@ -588,7 +648,7 @@ const styles = StyleSheet.create({
   },
   headerButton: {
     marginLeft: 16,
-    padding: 8,  // 增加点击区域
+    padding: 8,
   },
   activeHeaderButton: {
     backgroundColor: 'rgba(76, 175, 80, 0.2)',
@@ -728,6 +788,35 @@ const styles = StyleSheet.create({
     opacity: 0.9,
   },
   messageItem: {
-    // Add any necessary styles for the message item
+    marginBottom: 8,
+  },
+  messagesContainerWithAttachments: {
+    paddingTop: 8,
+    marginBottom: 0,
+  },
+  attachmentBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    backgroundColor: '#1C1C1E',
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#2C2C2E',
+  },
+  attachmentButton: {
+    alignItems: 'center',
+    width: 70,
+  },
+  attachmentIconContainer: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#2C2C2E',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  attachmentText: {
+    color: '#fff',
+    fontSize: 12,
   },
 }); 
