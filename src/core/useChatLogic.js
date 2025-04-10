@@ -39,6 +39,7 @@ export default function useChatLogic() {
   const [selectedMessages, setSelectedMessages] = useState([]);
   const [freePositionMode, setFreePositionMode] = useState(false);
   const [messagePositions, setMessagePositions] = useState({});
+  const [messageSizes, setMessageSizes] = useState({});
   
   // Refs
   const timerRef = useRef(null);
@@ -352,6 +353,7 @@ export default function useChatLogic() {
     selectedMessages,
     freePositionMode,
     messagePositions,
+    messageSizes,
     
     // 方法
     setInputText,
@@ -373,5 +375,7 @@ export default function useChatLogic() {
     combineSelectedMessages,
     setFreePositionMode,
     setMessagePositions,
+    setMessages,
+    setMessageSizes,
   };
 } 

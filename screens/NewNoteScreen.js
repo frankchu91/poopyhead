@@ -8,7 +8,8 @@ import {
   Image,
   ScrollView,
   KeyboardAvoidingView,
-  Platform
+  Platform,
+  SafeAreaView
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -22,6 +23,8 @@ export default function NewNoteScreen({ route, navigation }) {
 
   // 保存笔记
   const saveNote = async () => {
+    if (note.trim() === '') return;
+    
     try {
       const newNote = {
         id: Date.now().toString(),
@@ -64,63 +67,91 @@ export default function NewNoteScreen({ route, navigation }) {
   };
 
   return (
-    <KeyboardAvoidingView 
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      style={styles.container}
-    >
-      <ScrollView style={styles.content}>
-        {/* 标题输入 */}
-        <TextInput
-          style={styles.titleInput}
-          placeholder="Note Title"
-          value={title}
-          onChangeText={setTitle}
-        />
+    <SafeAreaView style={styles.container}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.keyboardAvoid}
+      >
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back" size={24} color="#fff" />
+          </TouchableOpacity>
+          
+          <Text style={styles.headerTitle}>新笔记</Text>
+          
+          <TouchableOpacity onPress={saveNote}>
+            <Text style={styles.saveButton}>保存</Text>
+          </TouchableOpacity>
+        </View>
+        
+        <ScrollView style={styles.content}>
+          {/* 标题输入 */}
+          <TextInput
+            style={styles.titleInput}
+            placeholder="Note Title"
+            value={title}
+            onChangeText={setTitle}
+          />
 
-        {/* 图片显示区域 */}
-        {image && (
-          <View style={styles.imageContainer}>
-            <Image source={{ uri: image }} style={styles.image} />
-            <TouchableOpacity 
-              style={styles.removeImage}
-              onPress={() => setImage(null)}
-            >
-              <Ionicons name="close-circle" size={24} color="white" />
-            </TouchableOpacity>
-          </View>
-        )}
+          {/* 图片显示区域 */}
+          {image && (
+            <View style={styles.imageContainer}>
+              <Image source={{ uri: image }} style={styles.image} />
+              <TouchableOpacity 
+                style={styles.removeImage}
+                onPress={() => setImage(null)}
+              >
+                <Ionicons name="close-circle" size={24} color="white" />
+              </TouchableOpacity>
+            </View>
+          )}
 
-        {/* 笔记输入 */}
-        <TextInput
-          style={styles.noteInput}
-          placeholder="Write your note here..."
-          value={note}
-          onChangeText={setNote}
-          multiline
-          textAlignVertical="top"
-        />
-      </ScrollView>
+          {/* 笔记输入 */}
+          <TextInput
+            style={styles.noteInput}
+            placeholder="Write your note here..."
+            value={note}
+            onChangeText={setNote}
+            multiline
+            textAlignVertical="top"
+          />
+        </ScrollView>
 
-      {/* 底部工具栏 */}
-      <View style={styles.toolbar}>
-        <TouchableOpacity style={styles.toolButton} onPress={pickImage}>
-          <Ionicons name="image" size={24} color="#f4511e" />
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={[styles.toolButton, styles.saveButton]}
-          onPress={saveNote}
-        >
-          <Text style={styles.saveButtonText}>Save Note</Text>
-        </TouchableOpacity>
-      </View>
-    </KeyboardAvoidingView>
+        {/* 底部工具栏 */}
+        <View style={styles.toolbar}>
+          <TouchableOpacity style={styles.toolButton} onPress={pickImage}>
+            <Ionicons name="image" size={24} color="#f4511e" />
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#000',
+  },
+  keyboardAvoid: {
+    flex: 1,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    backgroundColor: '#1C1C1E',
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  saveButton: {
+    color: '#0A84FF',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
   content: {
     flex: 1,
@@ -167,17 +198,5 @@ const styles = StyleSheet.create({
   toolButton: {
     padding: 10,
     marginRight: 10,
-  },
-  saveButton: {
-    backgroundColor: '#f4511e',
-    flex: 1,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  saveButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
   },
 }); 

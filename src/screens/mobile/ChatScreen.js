@@ -36,6 +36,7 @@ export default function MobileChatScreen({ navigation, route }) {
     selectedMessages,
     freePositionMode,
     messagePositions,
+    messageSizes,
     
     setInputText,
     sendTextMessage,
@@ -57,6 +58,7 @@ export default function MobileChatScreen({ navigation, route }) {
     setFreePositionMode,
     setMessagePositions,
     setMessages,
+    setMessageSizes,
   } = useChatLogic();
 
   // 移动端特有的状态
@@ -65,6 +67,7 @@ export default function MobileChatScreen({ navigation, route }) {
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [showAttachBar, setShowAttachBar] = useState(false);
   const [hasUsedFreeMode, setHasUsedFreeMode] = useState(false);
+  const [showScalingTip, setShowScalingTip] = useState(false);
   
   const flatListRef = useRef(null);
   const listRef = useRef(null);
@@ -114,6 +117,41 @@ export default function MobileChatScreen({ navigation, route }) {
     }
   }, [route.params?.image]);
 
+  // 处理新笔记
+  useEffect(() => {
+    if (route.params?.newNote) {
+      const newMessage = {
+        id: Date.now().toString(),
+        text: route.params.newNote,
+        type: 'text',
+        timestamp: new Date()
+      };
+      
+      // 添加新消息
+      setMessages(prev => [...prev, newMessage]);
+      
+      // 如果在自由模式下，设置位置
+      if (hasUsedFreeMode) {
+        // 找到现有消息中 y 坐标最大的
+        let maxY = 0;
+        Object.values(messagePositions).forEach(pos => {
+          if (pos.y > maxY) maxY = pos.y;
+        });
+        
+        setMessagePositions(prev => ({
+          ...prev,
+          [newMessage.id]: {
+            x: 20,
+            y: maxY + 80
+          }
+        }));
+      }
+      
+      // 清除路由参数
+      navigation.setParams({ newNote: null });
+    }
+  }, [route.params?.newNote]);
+
   // 切换自由模式
   const toggleFreeMode = () => {
     console.log('Button pressed!');
@@ -146,6 +184,15 @@ export default function MobileChatScreen({ navigation, route }) {
       }
     }
     
+    // 如果进入自由模式，显示缩放提示
+    if (!freePositionMode) {
+      setShowScalingTip(true);
+      // 5秒后自动隐藏提示
+      setTimeout(() => {
+        setShowScalingTip(false);
+      }, 5000);
+    }
+    
     // 切换自由模式
     setFreePositionMode(!freePositionMode);
   };
@@ -165,8 +212,8 @@ export default function MobileChatScreen({ navigation, route }) {
       y: y - currentPosition.y
     });
     
-    // 提供触觉反馈
-    Vibration.vibrate(50);
+    // // 提供触觉反馈
+    // Vibration.vibrate(50);
   };
 
   // 拖拽中
@@ -196,8 +243,17 @@ export default function MobileChatScreen({ navigation, route }) {
   const createPanResponder = (messageId) => {
     return PanResponder.create({
       onStartShouldSetPanResponder: () => freePositionMode,
-      onMoveShouldSetPanResponder: () => freePositionMode,
+      onMoveShouldSetPanResponder: (evt, gestureState) => {
+        // 只有当有明显的移动时才开始拖动，这样可以避免与缩放手势冲突
+        return freePositionMode && 
+          (Math.abs(gestureState.dx) > 2 || Math.abs(gestureState.dy) > 2);
+      },
+      // 设置低优先级，让缩放手势有机会优先处理
+      onMoveShouldSetPanResponderCapture: () => false,
       onPanResponderGrant: (evt, gestureState) => {
+        // 检测到多点触摸时不启动拖动
+        if (evt.nativeEvent.touches.length > 1) return;
+        
         const { pageX, pageY } = evt.nativeEvent;
         startDrag(messageId, pageX, pageY);
       },
@@ -211,6 +267,27 @@ export default function MobileChatScreen({ navigation, route }) {
       onPanResponderTerminate: () => {
         endDrag();
       }
+    });
+  };
+
+  // 处理消息大小调整
+  const handleMessageResize = (messageId, newSize) => {
+    console.log(`Resizing message ${messageId} to:`, newSize);
+    
+    // 检查 messageSizes 是否已定义
+    if (!messageSizes) {
+      console.warn('messageSizes is undefined!');
+      return;
+    }
+    
+    setMessageSizes(prev => {
+      console.log('Previous messageSizes:', prev);
+      const updated = {
+        ...prev,
+        [messageId]: newSize
+      };
+      console.log('Updated messageSizes:', updated);
+      return updated;
     });
   };
 
@@ -289,8 +366,33 @@ export default function MobileChatScreen({ navigation, route }) {
       );
     }
 
+    // 使用保存的位置或默认位置
+    const position = messagePositions[item.id] || { 
+      x: 20, 
+      y: 20 + index * 80 
+    };
+    
+    // 只在自由模式下允许拖拽
+    const panHandlers = freePositionMode ? 
+      createPanResponder(item.id).panHandlers : {};
+    
+    const isDragging = draggingMessageId === item.id;
+    
     return (
-      <View style={styles.messageItem}>
+      <Animated.View 
+        key={item.id}
+        style={[
+          styles.freePositionMessage,
+          {
+            left: position.x, 
+            top: position.y,
+            zIndex: isDragging ? 100 : 10,
+            width: messageSizes && messageSizes[item.id] ? messageSizes[item.id].width : 250,
+          },
+          isDragging && styles.draggingMessage
+        ]}
+        {...panHandlers}
+      >
         <MessageBubble
           message={item}
           isSelected={isSelected}
@@ -302,8 +404,10 @@ export default function MobileChatScreen({ navigation, route }) {
             }
           }}
           onPlayAudio={playAudio}
+          onResize={handleMessageResize}
+          isResizable={freePositionMode}
         />
-      </View>
+      </Animated.View>
     );
   };
 
@@ -484,11 +588,26 @@ export default function MobileChatScreen({ navigation, route }) {
         <Text style={styles.debugText}>
           Has Used Free Mode: {hasUsedFreeMode ? 'YES' : 'NO'}
         </Text>
-        {draggingMessageId && (
+        {messages.length > 0 && (
           <Text style={styles.debugText}>
-            Dragging: {draggingMessageId}
+            First Msg Size: {messageSizes && messageSizes[messages[0].id] 
+              ? `${messageSizes[messages[0].id].width}px` 
+              : 'default'}
           </Text>
         )}
+        <TouchableOpacity 
+          style={styles.debugButton}
+          onPress={() => {
+            // 测试调整大小功能
+            if (messages.length > 0) {
+              const firstMsgId = messages[0].id;
+              handleMessageResize(firstMsgId, { width: 300 });
+              console.log(`Manually resized message ${firstMsgId} to width 300`);
+            }
+          }}
+        >
+          <Text style={styles.debugButtonText}>Test Resize</Text>
+        </TouchableOpacity>
       </View>
       
       {/* 多选工具栏 */}
@@ -527,6 +646,7 @@ export default function MobileChatScreen({ navigation, route }) {
                       left: position.x, 
                       top: position.y,
                       zIndex: isDragging ? 100 : 10,
+                      width: messageSizes && messageSizes[item.id] ? messageSizes[item.id].width : 250,
                     },
                     isDragging && styles.draggingMessage
                   ]}
@@ -543,6 +663,8 @@ export default function MobileChatScreen({ navigation, route }) {
                       }
                     }}
                     onPlayAudio={playAudio}
+                    onResize={handleMessageResize}
+                    isResizable={freePositionMode}
                   />
                 </Animated.View>
               );
@@ -622,6 +744,18 @@ export default function MobileChatScreen({ navigation, route }) {
       
       {/* 上下文菜单 */}
       {renderContextMenu()}
+      
+      {showScalingTip && (
+        <View style={styles.scalingTip}>
+          <Ionicons name="finger-print" size={24} color="#fff" />
+          <Text style={styles.scalingTipText}>
+            使用双指捏合可调整消息大小
+          </Text>
+          <TouchableOpacity onPress={() => setShowScalingTip(false)}>
+            <Ionicons name="close-circle" size={20} color="#fff" />
+          </TouchableOpacity>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -775,9 +909,19 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 12,
   },
+  debugButton: {
+    backgroundColor: '#0A84FF',
+    padding: 8,
+    borderRadius: 4,
+    marginTop: 8,
+  },
+  debugButtonText: {
+    color: '#fff',
+    fontSize: 12,
+  },
   freePositionMessage: {
     position: 'absolute',
-    maxWidth: 250,
+    maxWidth: 350,
   },
   draggingMessage: {
     shadowColor: '#000',
@@ -818,5 +962,22 @@ const styles = StyleSheet.create({
   attachmentText: {
     color: '#fff',
     fontSize: 12,
+  },
+  scalingTip: {
+    position: 'absolute',
+    top: 80,
+    left: 20,
+    right: 20,
+    backgroundColor: 'rgba(10, 132, 255, 0.8)',
+    borderRadius: 12,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    zIndex: 1000,
+  },
+  scalingTipText: {
+    color: '#fff',
+    flex: 1,
+    marginHorizontal: 12,
   },
 }); 
