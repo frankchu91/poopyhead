@@ -14,11 +14,16 @@ import {
   Modal,
   Vibration,
   ScrollView,
-  Dimensions
+  Dimensions,
+  Keyboard,
+  InputAccessoryView,
+  TouchableWithoutFeedback
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import useChatLogic from '../../core/useChatLogic';
 import MessageBubble from '../../components/mobile/MessageBubble';
+
+const INPUT_ACCESSORY_ID = 'uniqueInputAccessoryId';
 
 export default function MobileChatScreen({ navigation, route }) {
   // 使用共享逻辑
@@ -72,14 +77,36 @@ export default function MobileChatScreen({ navigation, route }) {
   const flatListRef = useRef(null);
   const listRef = useRef(null);
 
-  // 滚动到底部
+  // 添加键盘状态跟踪
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  
+  // 监听键盘事件
   useEffect(() => {
-    if (flatListRef.current && messages.length > 0 && !freePositionMode) {
-      setTimeout(() => {
-        flatListRef.current.scrollToEnd({ animated: true });
-      }, 100);
-    }
-  }, [messages, freePositionMode]);
+    const keyboardDidShowListener = Keyboard.addListener(
+      'keyboardDidShow',
+      () => {
+        setKeyboardVisible(true);
+        // 滚动到底部
+        if (flatListRef.current && messages.length > 0 && !freePositionMode) {
+          setTimeout(() => {
+            flatListRef.current.scrollToEnd({ animated: true });
+          }, 100);
+        }
+      }
+    );
+    
+    const keyboardDidHideListener = Keyboard.addListener(
+      'keyboardDidHide',
+      () => {
+        setKeyboardVisible(false);
+      }
+    );
+
+    return () => {
+      keyboardDidShowListener.remove();
+      keyboardDidHideListener.remove();
+    };
+  }, [messages.length, freePositionMode]);
 
   // 处理相机返回的图片
   useEffect(() => {
@@ -576,6 +603,37 @@ export default function MobileChatScreen({ navigation, route }) {
     </View>
   );
 
+  // 点击背景隐藏键盘
+  const dismissKeyboard = () => {
+    Keyboard.dismiss();
+  };
+
+  // 创建键盘配件视图 (iOS)
+  const renderInputAccessory = () => {
+    if (Platform.OS !== 'ios') return null;
+    
+    return (
+      <InputAccessoryView nativeID={INPUT_ACCESSORY_ID}>
+        <View style={styles.inputAccessory}>
+          <TouchableOpacity onPress={dismissKeyboard} style={styles.keyboardDismissButton}>
+            <Ionicons name="chevron-down" size={20} color="#0A84FF" />
+          </TouchableOpacity>
+        </View>
+      </InputAccessoryView>
+    );
+  };
+  
+  // 处理发送消息
+  const handleSendMessage = () => {
+    sendTextMessage();
+    
+    setTimeout(() => {
+      if (flatListRef.current && !freePositionMode) {
+        flatListRef.current.scrollToEnd({ animated: true });
+      }
+    }, 100);
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       {renderHeader()}
@@ -672,13 +730,24 @@ export default function MobileChatScreen({ navigation, route }) {
           </View>
         ) : (
           // 从未使用过自由模式，使用普通列表
-          <FlatList
-            ref={flatListRef}
-            data={messages}
-            renderItem={renderMessageItem}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.messagesList}
-          />
+          <View style={[
+            styles.messagesContainer,
+            showAttachBar && styles.messagesContainerWithAttachments
+          ]}>
+            <FlatList
+              ref={flatListRef}
+              data={messages}
+              renderItem={renderMessageItem}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={styles.messagesList}
+              style={styles.fullFlex}
+              onContentSizeChange={() => {
+                if (!freePositionMode && messages.length > 0) {
+                  flatListRef.current.scrollToEnd({ animated: true });
+                }
+              }}
+            />
+          </View>
         )}
       </View>
       
@@ -686,60 +755,69 @@ export default function MobileChatScreen({ navigation, route }) {
       {renderAttachmentBar()}
       
       {/* 输入区域 */}
-      <KeyboardAvoidingView
+      <KeyboardAvoidingView 
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+        style={styles.keyboardAvoidContainer}
       >
-        <View style={[
-          styles.inputContainer,
-          showAttachBar ? { borderTopWidth: 0 } : { borderTopWidth: 1, borderTopColor: '#2C2C2E' }
-        ]}>
-          <TouchableOpacity 
-            style={styles.attachButton}
-            onPress={() => setShowAttachBar(!showAttachBar)}
-          >
-            <Ionicons 
-              name={showAttachBar ? "close-circle" : "add-circle"} 
-              size={24} 
-              color="#0A84FF" 
+        {!editingMessage ? (
+          <View style={styles.inputContainer}>
+            <TouchableOpacity 
+              style={styles.attachButton}
+              onPress={() => setShowAttachBar(!showAttachBar)}
+            >
+              <Ionicons name="add-circle" size={24} color="#0A84FF" />
+            </TouchableOpacity>
+            
+            <TextInput
+              style={styles.input}
+              placeholder="输入消息..."
+              placeholderTextColor="#8E8E93"
+              value={inputText}
+              onChangeText={setInputText}
+              multiline
+              inputAccessoryViewID={Platform.OS === 'ios' ? INPUT_ACCESSORY_ID : undefined}
             />
-          </TouchableOpacity>
-          
-          <TextInput
-            style={styles.input}
-            value={inputText}
-            onChangeText={setInputText}
-            placeholder="输入消息..."
-            placeholderTextColor="#8E8E93"
-            multiline
-          />
-          
-          {inputText.trim() === '' ? (
-            <TouchableOpacity 
-              style={styles.recordButton}
-              onPressIn={startRecording}
-              onPressOut={stopRecording}
-            >
-              <Ionicons 
-                name={isRecording ? "radio" : "mic"} 
-                size={24} 
-                color={isRecording ? "#FF453A" : "#0A84FF"} 
-              />
-              {isRecording && (
-                <Text style={styles.recordingTime}>
-                  {recordingTime}s
-                </Text>
-              )}
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity 
-              style={styles.sendButton}
-              onPress={sendTextMessage}
-            >
-              <Ionicons name="send" size={24} color="#0A84FF" />
-            </TouchableOpacity>
-          )}
-        </View>
+            
+            {inputText.trim() ? (
+              <TouchableOpacity 
+                style={styles.sendButton}
+                onPress={handleSendMessage}
+              >
+                <Ionicons name="send" size={24} color="#0A84FF" />
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity 
+                style={styles.recordButton}
+                onPressIn={startRecording}
+                onPressOut={stopRecording}
+              >
+                <Ionicons name="mic" size={24} color={isRecording ? "#FF453A" : "#0A84FF"} />
+                {isRecording && (
+                  <Text style={styles.recordingTime}>{recordingTime}s</Text>
+                )}
+              </TouchableOpacity>
+            )}
+          </View>
+        ) : (
+          <View style={styles.editContainer}>
+            <TextInput
+              style={styles.editInput}
+              value={editText}
+              onChangeText={setEditText}
+              multiline
+              autoFocus
+            />
+            <View style={styles.editButtons}>
+              <TouchableOpacity onPress={cancelEdit} style={styles.editButton}>
+                <Text style={styles.cancelText}>取消</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={saveEdit} style={styles.editButton}>
+                <Text style={styles.saveText}>保存</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
       </KeyboardAvoidingView>
       
       {/* 上下文菜单 */}
@@ -756,6 +834,9 @@ export default function MobileChatScreen({ navigation, route }) {
           </TouchableOpacity>
         </View>
       )}
+      
+      {/* 渲染iOS键盘顶部栏 */}
+      {renderInputAccessory()}
     </SafeAreaView>
   );
 }
@@ -764,6 +845,14 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000',
+  },
+  flexContainer: {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+  },
+  fullFlex: {
+    flex: 1,
   },
   header: {
     flexDirection: 'row',
@@ -805,6 +894,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 8,
     backgroundColor: '#1C1C1E',
+    borderTopWidth: 0.5,
+    borderTopColor: '#38383A',
   },
   attachButton: {
     padding: 8,
@@ -979,5 +1070,22 @@ const styles = StyleSheet.create({
     color: '#fff',
     flex: 1,
     marginHorizontal: 12,
+  },
+  keyboardAvoidContainer: {
+    width: '100%',
+    backgroundColor: '#1C1C1E',
+  },
+  inputAccessory: {
+    backgroundColor: '#222222',
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    height: 36,
+  },
+  keyboardDismissButton: {
+    padding: 8,
+    backgroundColor: '#333333',
+    borderRadius: 4,
   },
 }); 
