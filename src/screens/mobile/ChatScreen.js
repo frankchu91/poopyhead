@@ -184,40 +184,29 @@ export default function MobileChatScreen({ navigation, route }) {
     console.log('Button pressed!');
     console.log('Current freePositionMode:', freePositionMode);
     
+    // 无论何时点击按钮，都确保为所有消息设置位置
+    const initialPositions = {};
+    messages.forEach((msg, index) => {
+      // 为所有消息设置位置，除非已经有位置
+      if (!messagePositions[msg.id]) {
+        initialPositions[msg.id] = {
+          x: 20,
+          y: 20 + index * 80
+        };
+      }
+    });
+    
+    // 更新位置
+    if (Object.keys(initialPositions).length > 0) {
+      setMessagePositions(prev => ({
+        ...prev,
+        ...initialPositions
+      }));
+    }
+    
     // 如果要进入自由模式，标记为已使用
     if (!freePositionMode) {
       setHasUsedFreeMode(true);
-      
-      // 如果是第一次进入自由模式，为所有消息设置初始位置
-      if (!hasUsedFreeMode) {
-        const initialPositions = {};
-        messages.forEach((msg, index) => {
-          // 只设置还没有位置的消息
-          if (!messagePositions[msg.id]) {
-            initialPositions[msg.id] = {
-              x: 20,
-              y: 20 + index * 80
-            };
-          }
-        });
-        
-        // 更新位置
-        if (Object.keys(initialPositions).length > 0) {
-          setMessagePositions(prev => ({
-            ...prev,
-            ...initialPositions
-          }));
-        }
-      }
-    }
-    
-    // 如果进入自由模式，显示缩放提示
-    if (!freePositionMode) {
-      setShowScalingTip(true);
-      // 5秒后自动隐藏提示
-      setTimeout(() => {
-        setShowScalingTip(false);
-      }, 5000);
     }
     
     // 切换自由模式
@@ -367,74 +356,30 @@ export default function MobileChatScreen({ navigation, route }) {
   };
 
   // 渲染消息项
-  const renderMessageItem = ({ item, index }) => {
+  const renderMessageItem = ({ item }) => {
     const isSelected = selectedMessages.includes(item.id);
     
-    // 如果是编辑状态，显示编辑界面
-    if (editingMessage && editingMessage.id === item.id) {
-      return (
-        <View style={styles.editContainer}>
-          <TextInput
-            style={styles.editInput}
-            value={editText}
-            onChangeText={setEditText}
-            multiline
-            autoFocus
-          />
-          <View style={styles.editButtons}>
-            <TouchableOpacity onPress={cancelEdit} style={styles.editButton}>
-              <Text style={styles.cancelText}>取消</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={saveEdit} style={styles.editButton}>
-              <Text style={styles.saveText}>保存</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      );
-    }
-
-    // 使用保存的位置或默认位置
-    const position = messagePositions[item.id] || { 
-      x: 20, 
-      y: 20 + index * 80 
-    };
+    // 在这里添加调试日志
+    console.log(`Rendering message: ${item.id}`, item);
     
-    // 只在自由模式下允许拖拽
-    const panHandlers = freePositionMode ? 
-      createPanResponder(item.id).panHandlers : {};
-    
-    const isDragging = draggingMessageId === item.id;
-    
+    // 返回简化的 MessageBubble 组件
     return (
-      <Animated.View 
-        key={item.id}
-        style={[
-          styles.freePositionMessage,
-          {
-            left: position.x, 
-            top: position.y,
-            zIndex: isDragging ? 100 : 10,
-            width: messageSizes && messageSizes[item.id] ? messageSizes[item.id].width : 250,
-          },
-          isDragging && styles.draggingMessage
-        ]}
-        {...panHandlers}
-      >
+      <View style={styles.messageItem}>
         <MessageBubble
           message={item}
           isSelected={isSelected}
           isMultiSelectMode={isMultiSelectMode}
-          onLongPress={(event) => showContextMenu(item, event.nativeEvent)}
+          onLongPress={() => showContextMenu(item, {})}
           onPress={() => {
             if (isMultiSelectMode) {
               toggleMessageSelection(item.id);
             }
           }}
           onPlayAudio={playAudio}
-          onResize={handleMessageResize}
+          onResize={(messageId, size) => handleMessageResize(messageId, size)}
           isResizable={freePositionMode}
         />
-      </Animated.View>
+      </View>
     );
   };
 
@@ -584,16 +529,41 @@ export default function MobileChatScreen({ navigation, route }) {
     );
   };
   
-  // 处理发送消息
+  // 修改handleSendMessage，简化逻辑
   const handleSendMessage = () => {
     sendTextMessage();
-    
-    setTimeout(() => {
-      if (flatListRef.current && !freePositionMode) {
-        flatListRef.current.scrollToEnd({ animated: true });
-      }
-    }, 100);
+    setTimeout(() => scrollToBottom(false), 100);
+    Keyboard.dismiss();
   };
+
+  const scrollToBottom = (animated = true) => {
+    if (flatListRef.current && !freePositionMode && messages.length > 0) {
+      flatListRef.current.scrollToEnd({ animated });
+    }
+  };
+
+  // 在组件加载时为消息预设位置
+  useEffect(() => {
+    // 组件挂载时，确保所有消息都有位置
+    if (messages.length > 0) {
+      const initialPositions = {};
+      messages.forEach((msg, index) => {
+        if (!messagePositions[msg.id]) {
+          initialPositions[msg.id] = {
+            x: 20,
+            y: 20 + index * 80
+          };
+        }
+      });
+      
+      if (Object.keys(initialPositions).length > 0) {
+        setMessagePositions(prev => ({
+          ...prev,
+          ...initialPositions
+        }));
+      }
+    }
+  }, []);  // 空依赖数组确保只在挂载时运行一次
 
   return (
     <SafeAreaView style={styles.container}>
@@ -629,7 +599,7 @@ export default function MobileChatScreen({ navigation, route }) {
                   }}
                   onPlayAudio={playAudio}
                   onResize={(messageId, size) => handleMessageResize(messageId, size)}
-                  isResizable={freePositionMode}
+                  isResizable={true}  // 强制为可调整大小
                 />
               </Animated.View>
             ))}
@@ -643,10 +613,11 @@ export default function MobileChatScreen({ navigation, route }) {
               renderItem={renderMessageItem}
               keyExtractor={(item) => item.id}
               contentContainerStyle={styles.messagesList}
-              style={styles.fullFlex}
+              style={[styles.fullFlex, { backgroundColor: '#000' }]}
+              removeClippedSubviews={false}
               onContentSizeChange={() => {
-                if (!freePositionMode && messages.length > 0) {
-                  flatListRef.current.scrollToEnd({ animated: true });
+                if (flatListRef.current && messages.length > 0) {
+                  flatListRef.current.scrollToEnd({ animated: false });
                 }
               }}
             />
@@ -786,9 +757,11 @@ const styles = StyleSheet.create({
   messagesContainer: {
     flex: 1,
     backgroundColor: '#000',
+    minHeight: 100,
   },
   messagesList: {
     padding: 8,
+    flexGrow: 1,
   },
   freePositionContainer: {
     flex: 1,
