@@ -160,10 +160,7 @@ export default function MessageBubble({
             {renderContent()}
             
             <Text style={styles.timestamp}>
-              {new Date(message.timestamp).toLocaleTimeString([], { 
-                hour: '2-digit', 
-                minute: '2-digit' 
-              })}
+              {formatTimestamp(message.timestamp, true)}
             </Text>
             
             {/* 可视化的缩放提示 */}
@@ -178,6 +175,21 @@ export default function MessageBubble({
     </GestureHandlerRootView>
   );
 }
+
+const formatTimestamp = (timestamp, compact = false) => {
+  if (!timestamp) return '';
+  
+  const date = timestamp instanceof Date ? timestamp : new Date(timestamp);
+  
+  if (compact) {
+    // 紧凑格式: 只显示时:分
+    return date.getHours().toString().padStart(2, '0') + ':' + 
+           date.getMinutes().toString().padStart(2, '0');
+  } else {
+    // 完整格式
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+};
 
 const styles = StyleSheet.create({
   container: {
@@ -199,12 +211,14 @@ const styles = StyleSheet.create({
   bubble: {
     backgroundColor: '#1C1C1E',
     borderRadius: 16,
-    padding: 12,
+    padding: 8,
     maxWidth: '80%',
+    marginBottom: 2,
   },
   messageText: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: 14,
+    lineHeight: 18,
   },
   messageImage: {
     width: 200,
@@ -224,10 +238,10 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   timestamp: {
-    color: '#8E8E93',
-    fontSize: 12,
+    fontSize: 10,
+    color: 'rgba(255, 255, 255, 0.6)',
     alignSelf: 'flex-end',
-    marginTop: 4,
+    marginTop: 2,
   },
   resizeHandle: {
     position: 'absolute',
@@ -271,5 +285,14 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(10, 132, 255, 0.2)',
     justifyContent: 'center',
     alignItems: 'center',
-  }
+  },
+  shortMessage: {
+    maxWidth: '60%',
+  },
+  mediumMessage: {
+    maxWidth: '75%',
+  },
+  longMessage: {
+    maxWidth: '85%',
+  },
 }); 

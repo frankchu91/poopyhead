@@ -533,7 +533,6 @@ export default function MobileChatScreen({ navigation, route }) {
   const handleSendMessage = () => {
     sendTextMessage();
     setTimeout(() => scrollToBottom(false), 100);
-    Keyboard.dismiss();
   };
 
   const scrollToBottom = (animated = true) => {
@@ -564,6 +563,35 @@ export default function MobileChatScreen({ navigation, route }) {
       }
     }
   }, []);  // 空依赖数组确保只在挂载时运行一次
+
+  // 添加横屏检测和自适应布局
+  const [orientation, setOrientation] = useState('portrait');
+  const window = Dimensions.get('window');
+
+  useEffect(() => {
+    // 检测设备方向
+    const updateOrientation = () => {
+      const { width, height } = Dimensions.get('window');
+      setOrientation(width > height ? 'landscape' : 'portrait');
+    };
+    
+    // 初始化方向
+    updateOrientation();
+    
+    // 监听方向变化
+    Dimensions.addEventListener('change', updateOrientation);
+    
+    return () => {
+      // 旧版本
+      if (Dimensions.removeEventListener) {
+        Dimensions.removeEventListener('change', updateOrientation);
+      }
+      // 新版本
+      else if (Dimensions.removeEventListener) {
+        // 新版方式
+      }
+    };
+  }, []);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -615,6 +643,9 @@ export default function MobileChatScreen({ navigation, route }) {
               contentContainerStyle={styles.messagesList}
               style={[styles.fullFlex, { backgroundColor: '#000' }]}
               removeClippedSubviews={false}
+              windowSize={7}
+              initialNumToRender={15}
+              maxToRenderPerBatch={10}
               onContentSizeChange={() => {
                 if (flatListRef.current && messages.length > 0) {
                   flatListRef.current.scrollToEnd({ animated: false });
@@ -636,10 +667,7 @@ export default function MobileChatScreen({ navigation, route }) {
       >
         {!editingMessage ? (
           <View style={styles.inputContainer}>
-            <TouchableOpacity 
-              style={styles.attachButton}
-              onPress={() => setShowAttachBar(!showAttachBar)}
-            >
+            <TouchableOpacity style={styles.attachButton} onPress={() => setShowAttachBar(!showAttachBar)}>
               <Ionicons name="add-circle" size={24} color="#0A84FF" />
             </TouchableOpacity>
             
@@ -649,29 +677,31 @@ export default function MobileChatScreen({ navigation, route }) {
               placeholderTextColor="#8E8E93"
               value={inputText}
               onChangeText={setInputText}
-              multiline
+              multiline={false}
+              returnKeyType="send"
+              blurOnSubmit={false}
+              enablesReturnKeyAutomatically={true}
+              onSubmitEditing={() => {
+                if (inputText.trim()) {
+                  handleSendMessage();
+                }
+              }}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardAppearance="dark"
               inputAccessoryViewID={Platform.OS === 'ios' ? INPUT_ACCESSORY_ID : undefined}
             />
             
-            {inputText.trim() ? (
-              <TouchableOpacity 
-                style={styles.sendButton}
-                onPress={handleSendMessage}
-              >
-                <Ionicons name="send" size={24} color="#0A84FF" />
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity 
-                style={styles.recordButton}
-                onPressIn={startRecording}
-                onPressOut={stopRecording}
-              >
-                <Ionicons name="mic" size={24} color={isRecording ? "#FF453A" : "#0A84FF"} />
-                {isRecording && (
-                  <Text style={styles.recordingTime}>{recordingTime}s</Text>
-                )}
-              </TouchableOpacity>
-            )}
+            <TouchableOpacity 
+              style={styles.recordButton}
+              onPressIn={startRecording}
+              onPressOut={stopRecording}
+            >
+              <Ionicons name="mic" size={24} color={isRecording ? "#FF453A" : "#0A84FF"} />
+              {isRecording && (
+                <Text style={styles.recordingTime}>{recordingTime}s</Text>
+              )}
+            </TouchableOpacity>
           </View>
         ) : (
           <View style={styles.editContainer}>
@@ -732,14 +762,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 8,
-    paddingVertical: 6,
+    padding: 4,
+    paddingVertical: 4,
     backgroundColor: '#1E1E1E',
     borderBottomWidth: 0.5,
     borderBottomColor: '#333',
+    height: 42,
   },
   headerTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: 'bold',
     color: '#fff',
   },
@@ -760,7 +791,7 @@ const styles = StyleSheet.create({
     minHeight: 100,
   },
   messagesList: {
-    padding: 8,
+    padding: 4,
     flexGrow: 1,
   },
   freePositionContainer: {
@@ -771,7 +802,8 @@ const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 8,
+    padding: 6,
+    height: 48,
     backgroundColor: '#1C1C1E',
     borderTopWidth: 0.5,
     borderTopColor: '#38383A',
@@ -782,11 +814,13 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     backgroundColor: '#2C2C2E',
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     color: '#fff',
     maxHeight: 100,
+    marginRight: 8,
+    fontSize: 14,
   },
   recordButton: {
     padding: 8,
@@ -796,9 +830,6 @@ const styles = StyleSheet.create({
   recordingTime: {
     color: '#FF453A',
     marginLeft: 4,
-  },
-  sendButton: {
-    padding: 8,
   },
   editContainer: {
     backgroundColor: '#1C1C1E',
@@ -884,7 +915,7 @@ const styles = StyleSheet.create({
     opacity: 0.9,
   },
   messageItem: {
-    marginBottom: 8,
+    marginBottom: 2,
   },
   messagesContainerWithAttachments: {
     paddingTop: 8,
@@ -952,13 +983,5 @@ const styles = StyleSheet.create({
   messageContainer: {
     flex: 1,
     backgroundColor: '#000',
-  },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 8,
-    backgroundColor: '#1C1C1E',
-    borderTopWidth: 0.5,
-    borderTopColor: '#38383A',
   },
 }); 
