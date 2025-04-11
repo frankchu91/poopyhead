@@ -761,11 +761,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 16,
+    padding: 8,
+    paddingVertical: 6,
     backgroundColor: '#1E1E1E',
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#333',
   },
   headerTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
     color: '#fff',
   },
@@ -773,8 +776,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
   },
   headerButton: {
-    marginLeft: 16,
-    padding: 8,
+    marginLeft: 12,
+    padding: 6,
   },
   activeHeaderButton: {
     backgroundColor: 'rgba(76, 175, 80, 0.2)',
