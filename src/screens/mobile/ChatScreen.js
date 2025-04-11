@@ -544,61 +544,22 @@ export default function MobileChatScreen({ navigation, route }) {
   const renderHeader = () => (
     <View style={styles.header}>
       <TouchableOpacity onPress={() => navigation.goBack()}>
-        <Ionicons name="arrow-back" size={24} color="#fff" />
+        <Ionicons name="chevron-back" size={24} color="#fff" />
       </TouchableOpacity>
-      <Text style={styles.headerTitle}>{route.params?.name || 'Chat'}</Text>
+      <Text style={styles.headerTitle}>Chat</Text>
       <View style={styles.headerActions}>
-        {isMultiSelectMode ? (
-          <>
-            <TouchableOpacity 
-              style={styles.headerButton}
-              onPress={deleteSelectedMessages}
-            >
-              <Ionicons name="trash" size={24} color="#fff" />
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.headerButton}
-              onPress={combineSelectedMessages}
-            >
-              <Ionicons name="git-merge" size={24} color="#fff" />
-            </TouchableOpacity>
-          </>
-        ) : (
-          <>
-            {hasUsedFreeMode && (
-              <TouchableOpacity 
-                style={styles.headerButton}
-                onPress={() => {
-                  // 重置布局
-                  setHasUsedFreeMode(false);
-                  setMessagePositions({});
-                  setFreePositionMode(false);
-                }}
-              >
-                <Ionicons name="refresh" size={24} color="#fff" />
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity 
-              style={styles.headerButton}
-              onPress={toggleMultiSelectMode}
-            >
-              <Ionicons name="checkbox-outline" size={24} color="#fff" />
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={[
-                styles.headerButton,
-                freePositionMode && styles.activeHeaderButton
-              ]}
-              onPress={toggleFreeMode}
-            >
-              <Ionicons 
-                name="move" 
-                size={24} 
-                color={freePositionMode ? "#4CAF50" : "#fff"} 
-              />
-            </TouchableOpacity>
-          </>
-        )}
+        <TouchableOpacity style={styles.headerButton} onPress={() => {}}>
+          <Ionicons name="refresh" size={22} color="#fff" />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.headerButton} onPress={toggleMultiSelectMode}>
+          <Ionicons name="checkbox-outline" size={22} color="#fff" />
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={[styles.headerButton, freePositionMode && styles.activeHeaderButton]} 
+          onPress={toggleFreeMode}
+        >
+          <Ionicons name="move" size={22} color="#fff" />
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -638,102 +599,44 @@ export default function MobileChatScreen({ navigation, route }) {
     <SafeAreaView style={styles.container}>
       {renderHeader()}
       
-      {/* 调试信息 */}
-      <View style={styles.debugInfo}>
-        <Text style={styles.debugText}>
-          Free Mode: {freePositionMode ? 'ON' : 'OFF'}
-        </Text>
-        <Text style={styles.debugText}>
-          Has Used Free Mode: {hasUsedFreeMode ? 'YES' : 'NO'}
-        </Text>
-        {messages.length > 0 && (
-          <Text style={styles.debugText}>
-            First Msg Size: {messageSizes && messageSizes[messages[0].id] 
-              ? `${messageSizes[messages[0].id].width}px` 
-              : 'default'}
-          </Text>
-        )}
-        <TouchableOpacity 
-          style={styles.debugButton}
-          onPress={() => {
-            // 测试调整大小功能
-            if (messages.length > 0) {
-              const firstMsgId = messages[0].id;
-              handleMessageResize(firstMsgId, { width: 300 });
-              console.log(`Manually resized message ${firstMsgId} to width 300`);
-            }
-          }}
-        >
-          <Text style={styles.debugButtonText}>Test Resize</Text>
-        </TouchableOpacity>
-      </View>
-      
-      {/* 多选工具栏 */}
-      {renderMultiSelectToolbar()}
-      
-      {/* 消息列表 */}
-      <View 
-        style={[
-          styles.messagesContainer,
-          showAttachBar && styles.messagesContainerWithAttachments
-        ]} 
-        ref={listRef}
-      >
-        {/* 如果正在自由模式或曾经使用过自由模式，使用自由定位布局 */}
-        {(freePositionMode || hasUsedFreeMode) ? (
+      {/* 消息区域 - 修复布局 */}
+      <View style={styles.messageContainer}>
+        {freePositionMode ? (
+          // 自由模式布局
           <View style={styles.freePositionContainer}>
-            {messages.map((item, index) => {
-              // 使用保存的位置或默认位置
-              const position = messagePositions[item.id] || { 
-                x: 20, 
-                y: 20 + index * 80 
-              };
-              
-              // 只在自由模式下允许拖拽
-              const panHandlers = freePositionMode ? 
-                createPanResponder(item.id).panHandlers : {};
-              
-              const isDragging = draggingMessageId === item.id;
-              
-              return (
-                <Animated.View 
-                  key={item.id}
-                  style={[
-                    styles.freePositionMessage,
-                    {
-                      left: position.x, 
-                      top: position.y,
-                      zIndex: isDragging ? 100 : 10,
-                      width: messageSizes && messageSizes[item.id] ? messageSizes[item.id].width : 250,
-                    },
-                    isDragging && styles.draggingMessage
-                  ]}
-                  {...panHandlers}
-                >
-                  <MessageBubble
-                    message={item}
-                    isSelected={selectedMessages.includes(item.id)}
-                    isMultiSelectMode={isMultiSelectMode}
-                    onLongPress={(event) => showContextMenu(item, event.nativeEvent)}
-                    onPress={() => {
-                      if (isMultiSelectMode) {
-                        toggleMessageSelection(item.id);
-                      }
-                    }}
-                    onPlayAudio={playAudio}
-                    onResize={handleMessageResize}
-                    isResizable={freePositionMode}
-                  />
-                </Animated.View>
-              );
-            })}
+            {messages.map(message => (
+              <Animated.View
+                key={message.id}
+                style={[
+                  styles.freePositionMessage,
+                  {
+                    left: messagePositions[message.id]?.x || 20,
+                    top: messagePositions[message.id]?.y || 20,
+                  },
+                  draggingMessageId === message.id && styles.draggingMessage
+                ]}
+                {...createPanResponder(message.id).panHandlers}
+              >
+                <MessageBubble
+                  message={message}
+                  isSelected={selectedMessages.includes(message.id)}
+                  isMultiSelectMode={isMultiSelectMode}
+                  onLongPress={() => showContextMenu(message, {})}
+                  onPress={() => {
+                    if (isMultiSelectMode) {
+                      toggleMessageSelection(message.id);
+                    }
+                  }}
+                  onPlayAudio={playAudio}
+                  onResize={(messageId, size) => handleMessageResize(messageId, size)}
+                  isResizable={freePositionMode}
+                />
+              </Animated.View>
+            ))}
           </View>
         ) : (
-          // 从未使用过自由模式，使用普通列表
-          <View style={[
-            styles.messagesContainer,
-            showAttachBar && styles.messagesContainerWithAttachments
-          ]}>
+          // 列表模式布局
+          <View style={styles.messagesContainer}>
             <FlatList
               ref={flatListRef}
               data={messages}
@@ -992,24 +895,6 @@ const styles = StyleSheet.create({
   closeMultiSelectButton: {
     marginLeft: 16,
   },
-  debugInfo: {
-    padding: 8,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-  },
-  debugText: {
-    color: '#fff',
-    fontSize: 12,
-  },
-  debugButton: {
-    backgroundColor: '#0A84FF',
-    padding: 8,
-    borderRadius: 4,
-    marginTop: 8,
-  },
-  debugButtonText: {
-    color: '#fff',
-    fontSize: 12,
-  },
   freePositionMessage: {
     position: 'absolute',
     maxWidth: 350,
@@ -1087,5 +972,17 @@ const styles = StyleSheet.create({
     padding: 8,
     backgroundColor: '#333333',
     borderRadius: 4,
+  },
+  messageContainer: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 8,
+    backgroundColor: '#1C1C1E',
+    borderTopWidth: 0.5,
+    borderTopColor: '#38383A',
   },
 }); 
