@@ -22,6 +22,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import useChatLogic from '../../core/useChatLogic';
 import MessageBubble from '../../components/mobile/MessageBubble';
+import SpeechToTextService from '../../services/SpeechToTextService';
 
 const INPUT_ACCESSORY_ID = 'uniqueInputAccessoryId';
 
@@ -80,6 +81,14 @@ export default function MobileChatScreen({ navigation, route }) {
   // 添加键盘状态跟踪
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   
+  // 在组件内添加状态和服务实例
+  const [transcription, setTranscription] = useState("");
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const speechToTextRef = useRef(null);
+
+  // 在语音按钮处理中增加延迟保护
+  const [isProcessingVoice, setIsProcessingVoice] = useState(false);
+
   // 监听键盘事件
   useEffect(() => {
     const keyboardDidShowListener = Keyboard.addListener(
@@ -593,6 +602,66 @@ export default function MobileChatScreen({ navigation, route }) {
     };
   }, []);
 
+  // 初始化语音服务
+  useEffect(() => {
+    // 初始化 SpeechToTextService
+    speechToTextRef.current = new SpeechToTextService((text) => {
+      setTranscription(text);
+      setInputText(text); // 保持文本同步到输入框
+    });
+    
+    return () => {
+      // 清理
+      if (speechToTextRef.current && speechToTextRef.current.isRecording) {
+        speechToTextRef.current.stopRecording();
+      }
+    };
+  }, []);
+
+  // 修改开始录音函数
+  const handleStartRecording = async () => {
+    // 避免重复处理
+    if (isProcessingVoice) return;
+    
+    try {
+      setIsProcessingVoice(true);
+      setIsTranscribing(true);
+      setTranscription("");
+      setInputText("");
+      
+      const success = await speechToTextRef.current.startRecording();
+      if (!success) {
+        console.error("Failed to start recording");
+        setIsTranscribing(false);
+      }
+    } catch (error) {
+      console.error("Error starting recording:", error);
+      setIsTranscribing(false);
+    } finally {
+      // 延迟重置处理状态
+      setTimeout(() => {
+        setIsProcessingVoice(false);
+      }, 1000); // 1秒防抖延迟
+    }
+  };
+
+  // 修改停止录音函数
+  const handleStopRecording = async () => {
+    if (!isTranscribing) return;
+    
+    try {
+      if (speechToTextRef.current && speechToTextRef.current.isRecording) {
+        const finalText = await speechToTextRef.current.stopRecording();
+        setInputText(finalText);
+        setIsTranscribing(false);
+      }
+    } catch (error) {
+      console.error("Error stopping recording:", error);
+    } finally {
+      setIsTranscribing(false);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       {renderHeader()}
@@ -693,13 +762,19 @@ export default function MobileChatScreen({ navigation, route }) {
             />
             
             <TouchableOpacity 
-              style={styles.recordButton}
-              onPressIn={startRecording}
-              onPressOut={stopRecording}
+              style={[styles.recordButton, isTranscribing && styles.recordingActive]}
+              onPressIn={handleStartRecording}
+              onPressOut={handleStopRecording}
             >
-              <Ionicons name="mic" size={24} color={isRecording ? "#FF453A" : "#0A84FF"} />
-              {isRecording && (
-                <Text style={styles.recordingTime}>{recordingTime}s</Text>
+              <Ionicons 
+                name={isTranscribing ? "radio" : "mic"} 
+                size={24} 
+                color={isTranscribing ? "#FF453A" : "#0A84FF"} 
+              />
+              {isTranscribing && (
+                <Text style={styles.recordingTime}>
+                  {transcription ? "正在转录..." : "听您说话..."}
+                </Text>
               )}
             </TouchableOpacity>
           </View>
@@ -741,6 +816,15 @@ export default function MobileChatScreen({ navigation, route }) {
       
       {/* 渲染iOS键盘顶部栏 */}
       {renderInputAccessory()}
+
+      {/* 添加一个浮动的转录状态指示器 */}
+      {isTranscribing && (
+        <View style={styles.transcriptionOverlay}>
+          <Text style={styles.transcriptionText}>
+            {transcription || "正在聆听..."}
+          </Text>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -983,5 +1067,28 @@ const styles = StyleSheet.create({
   messageContainer: {
     flex: 1,
     backgroundColor: '#000',
+  },
+  recordingActive: {
+    backgroundColor: 'rgba(255, 69, 58, 0.15)',
+    borderRadius: 16,
+  },
+  transcriptionOverlay: {
+    position: 'absolute',
+    bottom: 80,
+    left: 20,
+    right: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    borderRadius: 12,
+    padding: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  transcriptionText: {
+    color: '#fff',
+    fontSize: 16,
+    textAlign: 'center',
   },
 }); 
