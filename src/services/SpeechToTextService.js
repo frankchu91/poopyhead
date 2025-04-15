@@ -23,57 +23,25 @@ export default class SpeechToTextService {
     this.sessionId = null;
   }
 
-  // 初始化 WebSocket 连接
+  // 初始化 WebSocket 连接 - 使用子协议进行认证
   async initWebSocket() {
     try {
-      // 1. 先获取认证令牌
-      debugLog('TOKEN_REQUEST', 'Requesting token...');
-      const tokenResponse = await fetch('https://api.openai.com/v1/realtime/transcription_sessions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${API_KEY}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({})
-      });
-
-      if (!tokenResponse.ok) {
-        const errorText = await tokenResponse.text();
-        debugLog('TOKEN_ERROR', errorText);
-        throw new Error(`Token request failed: ${tokenResponse.status}`);
-      }
-
-      const tokenData = await tokenResponse.json();
+      // 直接连接到OpenAI API，使用子协议进行认证
+      const url = "wss://api.openai.com/v1/realtime?intent=transcription";
+      debugLog('WS_URL', url);
       
-      // 添加更详细的令牌日志
-      debugLog('TOKEN_FULL_DATA', JSON.stringify(tokenData));
-      debugLog('TOKEN_KEYS', Object.keys(tokenData));
-      
-      const token = tokenData.client_secret;
-      debugLog('TOKEN_VALUE', `Type: ${typeof token}, Value: ${token ? token.substring(0, 10) + '...' : 'null or undefined'}`);
-      
-      this.sessionId = tokenData.id;
-      
-      if (!token) {
-        throw new Error('No token received');
-      }
-      
-      // 2. 尝试两种不同的 WebSocket URL 格式
-      
-      // 选项 1: 官方文档格式 - 通过 URL 参数传递令牌
-      const wsUrl1 = `wss://api.openai.com/v1/realtime?intent=transcription&token=${encodeURIComponent(token)}`;
-      debugLog('WS_URL_1', wsUrl1.substring(0, 60) + '...');
-      
-      // 选项 2: 另一种可能的格式
-      const wsUrl2 = `wss://api.openai.com/v1/realtime/transcription?token=${encodeURIComponent(token)}`;
-      debugLog('WS_URL_2', wsUrl2.substring(0, 60) + '...');
-      
-      // 使用选项 1
-      const finalWsUrl = wsUrl1;
-      debugLog('WS_URL_FINAL', `Using: ${finalWsUrl.substring(0, 60)}...`);
+      // 定义子协议数组，包含认证信息
+      const protocols = [
+        "realtime",
+        // 认证
+        "openai-insecure-api-key." + API_KEY,
+        // Beta协议，必需
+        "openai-beta.realtime-v1"
+      ];
       
       return new Promise((resolve, reject) => {
-        this.ws = new WebSocket(finalWsUrl);
+        // 创建WebSocket连接，使用子协议进行认证
+        this.ws = new WebSocket(url, protocols);
         
         // 设置连接超时
         const connectionTimeout = setTimeout(() => {
@@ -84,59 +52,116 @@ export default class SpeechToTextService {
         
         // WebSocket 打开时
         this.ws.onopen = () => {
-          debugLog('WS_OPEN', 'WebSocket opened');
+          debugLog('WS_OPEN', 'WebSocket connection established');
           clearTimeout(connectionTimeout);
           
-          // 直接发送配置，不需要单独发送认证
+          // 创建一个新的会话ID (如果没有的话)
+          if (!this.sessionId) {
+            this.sessionId = 'session_' + Math.random().toString(36).substring(2, 15);
+          }
+          
+          // 发送配置 - 按照文档示例结构
           const config = {
             type: "transcription_session.update",
-            input_audio_format: "pcm16",
-            input_audio_transcription: {
-              model: "gpt-4o-transcribe", 
-              prompt: "",
-              language: "zh"
-            },
-            turn_detection: {
-              type: "server_vad",
-              threshold: 0.5,
-              prefix_padding_ms: 300,
-              silence_duration_ms: 500,
-            },
-            input_audio_noise_reduction: {
-              type: "near_field"
-            },
-            include: [
-              "item.input_audio_transcription.logprobs"
-            ]
+            session: {
+              input_audio_format: "pcm16",
+              input_audio_transcription: {
+                model: "whisper-1",  // 使用我们的模型
+                prompt: "",
+                language: "zh"  // 使用中文
+              },
+              turn_detection: {
+                type: "server_vad",
+                threshold: 0.5,
+                prefix_padding_ms: 300,
+                silence_duration_ms: 500
+              },
+              input_audio_noise_reduction: {
+                type: "near_field"
+              }
+            }
           };
           
-          debugLog('SENDING_CONFIG', 'Sending configuration...');
+          debugLog('SENDING_CONFIG', JSON.stringify(config));
           this.ws.send(JSON.stringify(config));
           
           // 解决 Promise
           resolve();
         };
         
-        // 接收消息
+        // 接收消息 - 根据OpenAI文档处理所有服务器事件
         this.ws.onmessage = (event) => {
           try {
             const message = JSON.parse(event.data);
             debugLog('WS_MESSAGE', message.type || 'Unknown message type');
             
-            // 处理不同类型的消息
-            if (message.type === 'error') {
-              debugLog('WS_ERROR', JSON.stringify(message));
-              reject(new Error(`WebSocket error: ${JSON.stringify(message.error)}`));
-            } 
-            else if (message.type === 'transcription') {
-              // 更新转录
-              const text = message.transcription?.text;
-              if (text) {
-                this.transcription = text;
-                if (this.onTranscriptionUpdate) {
-                  this.onTranscriptionUpdate(text);
+            // 处理不同类型的服务器事件
+            switch (message.type) {
+              case 'error':
+                // 错误事件
+                debugLog('WS_ERROR', JSON.stringify(message.error));
+                break;
+                
+              case 'session.created':
+                // 会话创建事件
+                debugLog('SESSION_CREATED', `Session ID: ${message.session?.id}`);
+                // 保存服务器分配的会话ID（如果有）
+                if (message.session?.id) {
+                  this.sessionId = message.session.id;
                 }
-              }
+                break;
+                
+              case 'session.updated':
+                // 会话更新事件
+                debugLog('SESSION_UPDATED', `Session ID: ${message.session?.id}`);
+                break;
+                
+              case 'transcription':
+                // 转录事件 - 包含转录文本
+                const text = message.transcription?.text;
+                if (text) {
+                  debugLog('TRANSCRIPTION', text);
+                  this.transcription = text;
+                  if (this.onTranscriptionUpdate) {
+                    this.onTranscriptionUpdate(text);
+                  }
+                }
+                break;
+                
+              case 'audio_buffer.appended':
+                // 音频缓冲区追加事件
+                debugLog('AUDIO_APPENDED', `Bytes: ${message.bytes_appended}`);
+                break;
+                
+              case 'audio_buffer.committed':
+                // 音频缓冲区提交事件
+                debugLog('AUDIO_COMMITTED', `Bytes: ${message.bytes_committed}`);
+                break;
+                
+              case 'audio_buffer.cleared':
+                // 音频缓冲区清除事件
+                debugLog('AUDIO_CLEARED', 'Audio buffer cleared');
+                break;
+                
+              case 'turn.started':
+                // 语音轮次开始事件
+                debugLog('TURN_STARTED', `Turn ID: ${message.turn?.id}`);
+                break;
+                
+              case 'turn.ended':
+                // 语音轮次结束事件
+                debugLog('TURN_ENDED', `Turn ID: ${message.turn?.id}`);
+                break;
+                
+              case 'ping':
+                // 心跳检测事件 - 发送pong响应
+                this.ws.send(JSON.stringify({ type: 'pong' }));
+                break;
+                
+              default:
+                // 未知事件类型
+                debugLog('UNKNOWN_EVENT', JSON.stringify(message));
+                break;
             }
           } catch (parseError) {
             debugLog('PARSE_ERROR', `Failed to parse message: ${parseError.message}`);
@@ -147,6 +172,13 @@ export default class SpeechToTextService {
         this.ws.onerror = (error) => {
           debugLog('WS_ERROR', error.message || 'Unknown WebSocket error');
           clearTimeout(connectionTimeout);
+          
+          // Try to reconnect if appropriate
+          if (this.isRecording) {
+            debugLog('WS_RECONNECT', 'Attempting to reconnect...');
+            setTimeout(() => this.initWebSocket(), 2000);
+          }
+          
           reject(error);
         };
         
@@ -162,28 +194,40 @@ export default class SpeechToTextService {
     }
   }
 
-  // 从录音中获取音频数据
-  async getAudioData() {
-    if (!this.recording) return null;
+  // 从录音中获取音频数据并发送到WebSocket
+  async sendAudioData() {
+    if (!this.recording || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
     
     try {
       // 获取临时文件 URI
       const uri = this.recording.getURI();
-      if (!uri) return null;
+      if (!uri) return;
+      
+      // 获取录音状态
+      const status = await this.recording.getStatusAsync();
+      if (!status.isRecording && status.durationMillis <= 0) return;
       
       // 读取音频文件内容
       const info = await FileSystem.getInfoAsync(uri);
-      if (!info.exists) return null;
+      if (!info.exists) return;
       
       // 读取文件内容为 base64
       const base64Audio = await FileSystem.readAsStringAsync(uri, {
         encoding: FileSystem.EncodingType.Base64
       });
       
-      return base64Audio;
+      if (base64Audio) {
+        // 发送音频数据 - 完全按照文档示例
+        const audioMessage = {
+          type: "input_audio_buffer.append",
+          audio: base64Audio
+          // 不包含session或content_type参数
+        };
+        
+        this.ws.send(JSON.stringify(audioMessage));
+      }
     } catch (error) {
-      console.error('Error getting audio data:', error);
-      return null;
+      console.error('Error sending audio data:', error);
     }
   }
 
@@ -246,32 +290,11 @@ export default class SpeechToTextService {
       console.log("Recording started");
       
       // 设置定时器，定期发送音频数据
-      this.recordingInterval = setInterval(async () => {
-        if (this.isRecording && this.recording && this.ws && this.ws.readyState === WebSocket.OPEN) {
-          try {
-            // 获取录音状态
-            const status = await this.recording.getStatusAsync();
-            
-            // 如果正在录音并且有数据
-            if (status.isRecording && status.durationMillis > 0) {
-              // 获取音频数据
-              const audioBase64 = await this.getAudioData();
-              
-              if (audioBase64) {
-                // 发送音频数据
-                const audioMessage = {
-                  type: "input_audio_buffer.append",
-                  audio: audioBase64
-                };
-                
-                this.ws.send(JSON.stringify(audioMessage));
-              }
-            }
-          } catch (error) {
-            console.error('Error sending audio data:', error);
-          }
+      this.recordingInterval = setInterval(() => {
+        if (this.isRecording) {
+          this.sendAudioData();
         }
-      }, 500); // 每500毫秒发送一次
+      }, 5000); // 每500毫秒发送一次
       
       return true;
     } catch (error) {
@@ -319,8 +342,8 @@ export default class SpeechToTextService {
       this.ws = null;
     }
     
-    // 停止录音
-    if (this.recording) {
+    // 停止录音 - 只有在stopRecording没有处理时才尝试停止
+    if (this.recording && this.isRecording) {
       try {
         this.recording.stopAndUnloadAsync().catch(e => 
           console.warn("Error stopping recording:", e)
@@ -328,9 +351,10 @@ export default class SpeechToTextService {
       } catch (e) {
         console.warn("Error cleaning up recording:", e);
       }
-      this.recording = null;
     }
     
+    // 无论如何都清除recording引用
+    this.recording = null;
     this.isRecording = false;
   }
 
@@ -345,9 +369,16 @@ export default class SpeechToTextService {
       this.isRecording = false;
       
       // 停止录音
-      await this.recording.stopAndUnloadAsync();
+      try {
+        await this.recording.stopAndUnloadAsync();
+      } catch (stopError) {
+        // 如果已经停止，忽略错误
+        console.warn("Note: Recording may have already been stopped:", stopError.message);
+      }
       
-      // 清理资源
+      // 清理其他资源，但不再尝试停止录音
+      const recordingRef = this.recording;
+      this.recording = null;  // 先清除引用，防止cleanupResources再次尝试停止
       this.cleanupResources();
       
       // 重置音频模式
@@ -362,6 +393,40 @@ export default class SpeechToTextService {
       console.error('Stop recording error:', error);
       this.cleanupResources();
       return this.transcription;
+    }
+  }
+
+  // 提交音频缓冲区 - 简化为只包含type
+  commitAudioBuffer() {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    
+    try {
+      const commitMessage = {
+        type: "input_audio_buffer.commit"
+        // 不包含session参数
+      };
+      
+      debugLog('COMMIT_AUDIO', 'Committing audio buffer');
+      this.ws.send(JSON.stringify(commitMessage));
+    } catch (error) {
+      console.error('Error committing audio buffer:', error);
+    }
+  }
+
+  // 清除音频缓冲区 - 简化为只包含type
+  clearAudioBuffer() {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    
+    try {
+      const clearMessage = {
+        type: "input_audio_buffer.clear"
+        // 不包含session参数
+      };
+      
+      debugLog('CLEAR_AUDIO', 'Clearing audio buffer');
+      this.ws.send(JSON.stringify(clearMessage));
+    } catch (error) {
+      console.error('Error clearing audio buffer:', error);
     }
   }
 } 
