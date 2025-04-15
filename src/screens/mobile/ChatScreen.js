@@ -17,7 +17,8 @@ import {
   Dimensions,
   Keyboard,
   InputAccessoryView,
-  TouchableWithoutFeedback
+  TouchableWithoutFeedback,
+  Alert
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import useChatLogic from '../../core/useChatLogic';
@@ -31,7 +32,7 @@ export default function MobileChatScreen({ navigation, route }) {
   const {
     messages,
     inputText,
-    isRecording,
+    // isRecording, // 注释掉，因为我们将使用自己的状态
     recordingTime,
     editingMessage,
     editText,
@@ -66,6 +67,9 @@ export default function MobileChatScreen({ navigation, route }) {
     setMessages,
     setMessageSizes,
   } = useChatLogic();
+
+  // 添加本地的录音状态
+  const [isRecording, setIsRecording] = useState(false);
 
   // 移动端特有的状态
   const [draggingMessageId, setDraggingMessageId] = useState(null);
@@ -502,6 +506,17 @@ export default function MobileChatScreen({ navigation, route }) {
       </TouchableOpacity>
       <Text style={styles.headerTitle}>Chat</Text>
       <View style={styles.headerActions}>
+        <TouchableOpacity 
+          style={[styles.headerButton, isRecording && styles.recordingActive]} 
+          onPress={toggleRecording}
+        >
+          <Ionicons 
+            name={isRecording ? "mic" : "mic-outline"} 
+            size={22} 
+            color={isRecording ? "#FF453A" : "#fff"} 
+          />
+        </TouchableOpacity>
+        
         <TouchableOpacity style={styles.headerButton} onPress={() => {}}>
           <Ionicons name="refresh" size={22} color="#fff" />
         </TouchableOpacity>
@@ -662,6 +677,40 @@ export default function MobileChatScreen({ navigation, route }) {
     }
   };
 
+  const toggleRecording = async () => {
+    try {
+      if (isRecording) {
+        // 结束录音
+        console.log("Stopping recording...");
+        const text = await speechToTextRef.current.stopRecording();
+        console.log("Got text:", text);
+        
+        if (text && text.trim()) {
+          // 处理语音识别结果
+          setInputText(text);
+          sendTextMessage();
+        }
+        setIsRecording(false);
+      } else {
+        // 开始录音
+        console.log("Starting recording...");
+        const success = await speechToTextRef.current.startRecording();
+        if (success) {
+          setIsRecording(true);
+          // 清除任何现有的输入文本
+          setInputText("");
+        } else {
+          // 处理录音失败的情况
+          Alert.alert("录音失败", "无法启动录音，请检查麦克风权限");
+        }
+      }
+    } catch (error) {
+      console.error("录音操作错误:", error);
+      setIsRecording(false);
+      Alert.alert("录音错误", "录音过程中发生错误");
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       {renderHeader()}
@@ -762,20 +811,14 @@ export default function MobileChatScreen({ navigation, route }) {
             />
             
             <TouchableOpacity 
-              style={[styles.recordButton, isTranscribing && styles.recordingActive]}
-              onPressIn={handleStartRecording}
-              onPressOut={handleStopRecording}
+              style={styles.sendButton}
+              onPress={() => {
+                if (inputText.trim()) {
+                  handleSendMessage();
+                }
+              }}
             >
-              <Ionicons 
-                name={isTranscribing ? "radio" : "mic"} 
-                size={24} 
-                color={isTranscribing ? "#FF453A" : "#0A84FF"} 
-              />
-              {isTranscribing && (
-                <Text style={styles.recordingTime}>
-                  {transcription ? "正在转录..." : "听您说话..."}
-                </Text>
-              )}
+              <Ionicons name="send" size={24} color="#0A84FF" />
             </TouchableOpacity>
           </View>
         ) : (
@@ -906,14 +949,8 @@ const styles = StyleSheet.create({
     marginRight: 8,
     fontSize: 14,
   },
-  recordButton: {
+  sendButton: {
     padding: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  recordingTime: {
-    color: '#FF453A',
-    marginLeft: 4,
   },
   editContainer: {
     backgroundColor: '#1C1C1E',
@@ -1069,7 +1106,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
   },
   recordingActive: {
-    backgroundColor: 'rgba(255, 69, 58, 0.15)',
+    backgroundColor: 'rgba(255, 69, 58, 0.3)',
     borderRadius: 16,
   },
   transcriptionOverlay: {
@@ -1090,5 +1127,18 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     textAlign: 'center',
+  },
+  topBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  voiceButton: {
+    padding: 10,
+    borderRadius: 50,
+    backgroundColor: '#eee',
+  },
+  recordingButton: {
+    backgroundColor: '#ffeeee',
   },
 }); 
