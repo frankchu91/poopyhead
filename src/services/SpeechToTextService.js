@@ -93,6 +93,7 @@ export default class SpeechToTextService {
         this.ws.onmessage = (event) => {
           try {
             const message = JSON.parse(event.data);
+            debugLog('现在开始Debug消息啦，注意好了')
             debugLog('WS_MESSAGE', message.type || 'Unknown message type');
             
             // 处理不同类型的服务器事件
@@ -116,9 +117,10 @@ export default class SpeechToTextService {
                 debugLog('SESSION_UPDATED', `Session ID: ${message.session?.id}`);
                 break;
                 
-              case 'transcription':
+              case 'conversation.item.input_audio_transcription.completed':
                 // 转录事件 - 包含转录文本
-                const text = message.transcription?.text;
+                debugLog('进来这边转录了')
+                const text = message.transcript;
                 if (text) {
                   debugLog('TRANSCRIPTION', text);
                   this.transcription = text;
