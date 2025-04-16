@@ -21,6 +21,12 @@ export default class SpeechToTextService {
     this.onTranscriptionUpdate = onTranscriptionUpdate;
     this.transcription = "";
     this.sessionId = null;
+    
+    // 添加用于跟踪时间的变量
+    this.recordingStartTime = null;
+    this.lastTranscriptionTime = null;
+    this.estimatedTranscribedDuration = 0;
+    this.totalRecordingDuration = 0;
   }
 
   // 初始化 WebSocket 连接 - 使用子协议进行认证
@@ -66,9 +72,9 @@ export default class SpeechToTextService {
             session: {
               input_audio_format: "pcm16",
               input_audio_transcription: {
-                model: "whisper-1",  // 使用我们的模型
+                model: "gpt-4o-transcribe",  // 使用我们的模型
                 prompt: "",
-                language: "zh"  // 使用中文
+                language: "zh"  
               },
               turn_detection: {
                 type: "server_vad",
@@ -93,7 +99,7 @@ export default class SpeechToTextService {
         this.ws.onmessage = (event) => {
           try {
             const message = JSON.parse(event.data);
-            debugLog('现在开始Debug消息啦，注意好了')
+            // debugLog('现在开始Debug消息啦，注意好了')
             debugLog('WS_MESSAGE', message.type || 'Unknown message type');
             
             // 处理不同类型的服务器事件
@@ -119,13 +125,44 @@ export default class SpeechToTextService {
                 
               case 'conversation.item.input_audio_transcription.completed':
                 // 转录事件 - 包含转录文本
-                debugLog('进来这边转录了')
+                debugLog('进来这边转录了', JSON.stringify(message))
                 const text = message.transcript;
                 if (text) {
                   debugLog('TRANSCRIPTION', text);
                   this.transcription = text;
-                  if (this.onTranscriptionUpdate) {
-                    this.onTranscriptionUpdate(text);
+                  
+                  // 计算经过的时间和估计的转录进度
+                  const now = new Date();
+                  if (this.recordingStartTime) {
+                    // 计算总录音时长（秒）
+                    this.totalRecordingDuration = (now - this.recordingStartTime) / 1000;
+                    
+                    // 基于文本量估算已转录的时长
+                    // 假设平均每秒2.5个中文字符或5个英文单词
+                    // 这是一个粗略估计，可以根据实际情况调整
+                    const wordCount = text.split(/\s+/).length;
+                    const charCount = text.replace(/\s+/g, '').length;
+                    
+                    // 估算已转录的音频时长（秒）
+                    // 对于中文和英文混合文本使用组合公式
+                    this.estimatedTranscribedDuration = Math.min(
+                      this.totalRecordingDuration,
+                      (wordCount / 5 + charCount / 2.5) / 2
+                    );
+                    
+                    // 计算转录进度百分比
+                    const progress = this.totalRecordingDuration > 0 
+                      ? this.estimatedTranscribedDuration / this.totalRecordingDuration 
+                      : 0;
+                    
+                    // 如果回调存在，将转录文本和进度信息传递给回调
+                    if (this.onTranscriptionUpdate) {
+                      this.onTranscriptionUpdate(text, {
+                        totalDuration: this.totalRecordingDuration,
+                        transcribedDuration: this.estimatedTranscribedDuration,
+                        progress: progress
+                      });
+                    }
                   }
                 }
                 break;
@@ -225,7 +262,7 @@ export default class SpeechToTextService {
           audio: base64Audio
           // 不包含session或content_type参数
         };
-        
+ 
         this.ws.send(JSON.stringify(audioMessage));
       }
     } catch (error) {
@@ -242,6 +279,12 @@ export default class SpeechToTextService {
       if (this.recording) {
         await this.stopExistingRecording();
       }
+      
+      // 初始化时间追踪变量
+      this.recordingStartTime = new Date();
+      this.lastTranscriptionTime = null;
+      this.estimatedTranscribedDuration = 0;
+      this.totalRecordingDuration = 0;
       
       // 请求麦克风权限
       const permission = await Audio.requestPermissionsAsync();
@@ -369,6 +412,11 @@ export default class SpeechToTextService {
       
       console.log("Stopping recording...");
       this.isRecording = false;
+      
+      // 计算最终的录音时长
+      if (this.recordingStartTime) {
+        this.totalRecordingDuration = (new Date() - this.recordingStartTime) / 1000;
+      }
       
       // 停止录音
       try {

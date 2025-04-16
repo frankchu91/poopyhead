@@ -24,6 +24,7 @@ import { Ionicons } from '@expo/vector-icons';
 import useChatLogic from '../../core/useChatLogic';
 import MessageBubble from '../../components/mobile/MessageBubble';
 import SpeechToTextService from '../../services/SpeechToTextService';
+import RecordingProgressBar from '../../components/RecordingProgressBar';
 
 const INPUT_ACCESSORY_ID = 'uniqueInputAccessoryId';
 
@@ -92,6 +93,20 @@ export default function MobileChatScreen({ navigation, route }) {
 
   // 在语音按钮处理中增加延迟保护
   const [isProcessingVoice, setIsProcessingVoice] = useState(false);
+
+  // 在 ChatScreen 组件内添加状态
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const [transcriptionProgress, setTranscriptionProgress] = useState(0);
+
+  // 在组件内创建新状态
+  const [transcribedDuration, setTranscribedDuration] = useState(0);
+  const [totalDuration, setTotalDuration] = useState(0);
+
+  // 添加一个状态来跟踪当前正在转录的消息
+  const [transcribingMessageId, setTranscribingMessageId] = useState(null);
+
+  // 添加一个状态来存储上一次的转录文本
+  const [lastTranscriptionText, setLastTranscriptionText] = useState("");
 
   // 监听键盘事件
   useEffect(() => {
@@ -373,7 +388,7 @@ export default function MobileChatScreen({ navigation, route }) {
     const isSelected = selectedMessages.includes(item.id);
     
     // 在这里添加调试日志
-    console.log(`Rendering message: ${item.id}`, item);
+    // console.log(`Rendering message: ${item.id}`, item);
     
     // 返回简化的 MessageBubble 组件
     return (
@@ -617,12 +632,75 @@ export default function MobileChatScreen({ navigation, route }) {
     };
   }, []);
 
-  // 初始化语音服务
+  // 修改转录更新处理函数
+  const handleTranscriptionUpdate = (text, progressInfo) => {
+    // 更新进度状态
+    if (progressInfo) {
+      setTranscribedDuration(progressInfo.transcribedDuration);
+      setTotalDuration(progressInfo.totalDuration);
+      setTranscriptionProgress(progressInfo.progress);
+    }
+    
+    // 检查文本是否有内容
+    if (text && text.trim()) {
+      // 检查是否有新内容 - 防止创建重复消息
+      if (text.trim() !== lastTranscriptionText.trim()) {
+        console.log("转录文本已更新:", text);
+        
+        // 如果当前没有正在转录的消息，创建一个新的
+        if (!transcribingMessageId) {
+          const newMessageId = Date.now().toString();
+          const newMessage = {
+            id: newMessageId,
+            type: 'text',
+            text: text.trim(),
+            isTranscribing: true,
+            timestamp: new Date()
+          };
+          
+          // 添加到消息列表
+          setMessages(prev => [...prev, newMessage]);
+          setTranscribingMessageId(newMessageId);
+          
+          // 如果在自由模式下，设置位置
+          if (hasUsedFreeMode) {
+            // 找到现有消息中 y 坐标最大的
+            let maxY = 0;
+            Object.values(messagePositions).forEach(pos => {
+              if (pos.y > maxY) maxY = pos.y;
+            });
+            
+            setMessagePositions(prev => ({
+              ...prev,
+              [newMessageId]: {
+                x: 20,
+                y: maxY + 80
+              }
+            }));
+          }
+        } else {
+          // 更新现有的转录消息
+          setMessages(prev => prev.map(msg => 
+            msg.id === transcribingMessageId 
+              ? { ...msg, text: text.trim() } 
+              : msg
+          ));
+        }
+        
+        // 更新上一次转录文本
+        setLastTranscriptionText(text.trim());
+        
+        // 自动滚动到底部
+        setTimeout(() => scrollToBottom(false), 100);
+      }
+    }
+  };
+
+  // 初始化语音服务时传递更新的回调
   useEffect(() => {
     // 初始化 SpeechToTextService
-    speechToTextRef.current = new SpeechToTextService((text) => {
-      setTranscription(text);
-      setInputText(text); // 保持文本同步到输入框
+    speechToTextRef.current = new SpeechToTextService((text, progressInfo) => {
+      handleTranscriptionUpdate(text, progressInfo);
     });
     
     return () => {
@@ -633,50 +711,6 @@ export default function MobileChatScreen({ navigation, route }) {
     };
   }, []);
 
-  // 修改开始录音函数
-  const handleStartRecording = async () => {
-    // 避免重复处理
-    if (isProcessingVoice) return;
-    
-    try {
-      setIsProcessingVoice(true);
-      setIsTranscribing(true);
-      setTranscription("");
-      setInputText("");
-      
-      const success = await speechToTextRef.current.startRecording();
-      if (!success) {
-        console.error("Failed to start recording");
-        setIsTranscribing(false);
-      }
-    } catch (error) {
-      console.error("Error starting recording:", error);
-      setIsTranscribing(false);
-    } finally {
-      // 延迟重置处理状态
-      setTimeout(() => {
-        setIsProcessingVoice(false);
-      }, 1000); // 1秒防抖延迟
-    }
-  };
-
-  // 修改停止录音函数
-  const handleStopRecording = async () => {
-    if (!isTranscribing) return;
-    
-    try {
-      if (speechToTextRef.current && speechToTextRef.current.isRecording) {
-        const finalText = await speechToTextRef.current.stopRecording();
-        setInputText(finalText);
-        setIsTranscribing(false);
-      }
-    } catch (error) {
-      console.error("Error stopping recording:", error);
-    } finally {
-      setIsTranscribing(false);
-    }
-  };
-
   const toggleRecording = async () => {
     try {
       if (isRecording) {
@@ -685,11 +719,14 @@ export default function MobileChatScreen({ navigation, route }) {
         const text = await speechToTextRef.current.stopRecording();
         console.log("Got text:", text);
         
-        if (text && text.trim()) {
-          // 处理语音识别结果
-          setInputText(text);
-          sendTextMessage();
-        }
+        // 清除所有消息的转录状态
+        setMessages(prev => prev.map(msg => 
+          msg.isTranscribing ? { ...msg, isTranscribing: false } : msg
+        ));
+        
+        // 重置相关状态
+        setTranscribingMessageId(null);
+        setLastTranscriptionText("");
         setIsRecording(false);
       } else {
         // 开始录音
@@ -697,10 +734,9 @@ export default function MobileChatScreen({ navigation, route }) {
         const success = await speechToTextRef.current.startRecording();
         if (success) {
           setIsRecording(true);
-          // 清除任何现有的输入文本
-          setInputText("");
+          setTranscribingMessageId(null);
+          setLastTranscriptionText("");
         } else {
-          // 处理录音失败的情况
           Alert.alert("录音失败", "无法启动录音，请检查麦克风权限");
         }
       }
@@ -783,6 +819,16 @@ export default function MobileChatScreen({ navigation, route }) {
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
         style={styles.keyboardAvoidContainer}
       >
+        {isRecording && (
+          <RecordingProgressBar 
+            isRecording={isRecording}
+            duration={recordingDuration}
+            transcriptionProgress={transcriptionProgress}
+            transcribedSeconds={transcribedDuration}
+            totalSeconds={totalDuration}
+          />
+        )}
+        
         {!editingMessage ? (
           <View style={styles.inputContainer}>
             <TouchableOpacity style={styles.attachButton} onPress={() => setShowAttachBar(!showAttachBar)}>

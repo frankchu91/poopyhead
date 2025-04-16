@@ -169,6 +169,12 @@ export default function MessageBubble({
                 <Ionicons name="resize-outline" size={18} color="#0A84FF" />
               </View>
             )}
+            
+            {message.isTranscribing && (
+              <View style={styles.transcribingIndicator}>
+                <Text style={styles.transcribingText}>正在转录...</Text>
+              </View>
+            )}
           </View>
         </PinchGestureHandler>
       </TouchableOpacity>
@@ -294,5 +300,19 @@ const styles = StyleSheet.create({
   },
   longMessage: {
     maxWidth: '85%',
+  },
+  transcribingIndicator: {
+    position: 'absolute',
+    bottom: -18,
+    right: 10,
+    backgroundColor: 'rgba(255, 51, 51, 0.8)',
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  transcribingText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: 'bold',
   },
 }); 
