@@ -223,7 +223,7 @@ const styles = StyleSheet.create({
   },
   messageText: {
     color: '#fff',
-    fontSize: 14,
+    fontSize: 12,
     lineHeight: 18,
   },
   messageImage: {
@@ -244,7 +244,7 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   timestamp: {
-    fontSize: 10,
+    fontSize: 8,
     color: 'rgba(255, 255, 255, 0.6)',
     alignSelf: 'flex-end',
     marginTop: 2,
