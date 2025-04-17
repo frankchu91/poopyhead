@@ -108,6 +108,9 @@ export default function MobileChatScreen({ navigation, route }) {
   // 添加一个状态来存储上一次的转录文本
   const [lastTranscriptionText, setLastTranscriptionText] = useState("");
 
+  // 在组件顶部添加
+  const transcribingMessageIdRef = useRef(null);
+
   // 监听键盘事件
   useEffect(() => {
     const keyboardDidShowListener = Keyboard.addListener(
@@ -513,31 +516,39 @@ export default function MobileChatScreen({ navigation, route }) {
     );
   };
 
-  // 渲染顶部工具栏
+  // 修复renderHeader函数中的函数引用问题
   const renderHeader = () => (
     <View style={styles.header}>
       <TouchableOpacity onPress={() => navigation.goBack()}>
         <Ionicons name="chevron-back" size={24} color="#fff" />
       </TouchableOpacity>
+      
       <Text style={styles.headerTitle}>Chat</Text>
+      
       <View style={styles.headerActions}>
         <TouchableOpacity 
-          style={[styles.headerButton, isRecording && styles.recordingActive]} 
+          style={[
+            styles.headerButton, 
+            isRecording ? { backgroundColor: '#FF453A', borderRadius: 20 } : styles.recordingActive
+          ]}
           onPress={toggleRecording}
+          disabled={isProcessingVoice}
         >
           <Ionicons 
-            name={isRecording ? "mic" : "mic-outline"} 
+            name={isRecording ? "stop-circle" : "mic-outline"} 
             size={22} 
-            color={isRecording ? "#FF453A" : "#fff"} 
+            color={isRecording ? "#fff" : "#fff"} 
           />
         </TouchableOpacity>
         
         <TouchableOpacity style={styles.headerButton} onPress={() => {}}>
           <Ionicons name="refresh" size={22} color="#fff" />
         </TouchableOpacity>
+        
         <TouchableOpacity style={styles.headerButton} onPress={toggleMultiSelectMode}>
           <Ionicons name="checkbox-outline" size={22} color="#fff" />
         </TouchableOpacity>
+        
         <TouchableOpacity 
           style={[styles.headerButton, freePositionMode && styles.activeHeaderButton]} 
           onPress={toggleFreeMode}
@@ -632,7 +643,80 @@ export default function MobileChatScreen({ navigation, route }) {
     };
   }, []);
 
-  // 修改转录更新处理函数
+  // 修改toggleRecording函数
+  const toggleRecording = async () => {
+    try {
+      if (isRecording) {
+        // 结束录音
+        console.log("Stopping recording...");
+        const text = await speechToTextRef.current.stopRecording();
+        console.log("Got text:", text);
+        
+        // 标记当前转录消息为已完成
+        setMessages(prev => prev.map(msg => 
+          msg.id === transcribingMessageIdRef.current 
+            ? { ...msg, isTranscribing: false } 
+            : msg
+        ));
+        
+        // 重置转录状态 (同时重置ref和state)
+        transcribingMessageIdRef.current = null;
+        setTranscribingMessageId(null);
+        setIsRecording(false);
+      } else {
+        // 开始录音前先创建一个初始消息
+        const newMessageId = Date.now().toString();
+        const newMessage = {
+          id: newMessageId,
+          type: 'text',
+          text: "正在倾听...",
+          isTranscribing: true,
+          timestamp: new Date()
+        };
+        
+        // 添加新消息
+        setMessages(prev => [...prev, newMessage]);
+        
+        // 同时更新ref和state (ref会立即更新，state是异步的)
+        transcribingMessageIdRef.current = newMessageId;
+        setTranscribingMessageId(newMessageId);
+        
+        console.log("设置转录消息ID (ref):", newMessageId);
+        
+        // 如果在自由模式下，设置位置
+        if (hasUsedFreeMode) {
+          let maxY = 0;
+          Object.values(messagePositions).forEach(pos => {
+            if (pos.y > maxY) maxY = pos.y;
+          });
+          
+          setMessagePositions(prev => ({
+            ...prev,
+            [newMessageId]: { x: 20, y: maxY + 80 }
+          }));
+        }
+        
+        // 开始录音
+        console.log("Starting recording...");
+        const success = await speechToTextRef.current.startRecording();
+        if (success) {
+          setIsRecording(true);
+        } else {
+          // 如果录音启动失败，移除刚刚创建的消息
+          setMessages(prev => prev.filter(msg => msg.id !== newMessageId));
+          setTranscribingMessageId(null);
+          transcribingMessageIdRef.current = null;
+          Alert.alert("录音失败", "无法启动录音，请检查麦克风权限");
+        }
+      }
+    } catch (error) {
+      console.error("录音操作错误:", error);
+      setIsRecording(false);
+      Alert.alert("录音错误", "录音过程中发生错误");
+    }
+  };
+
+  // 修改转录更新处理函数，改为追加文本
   const handleTranscriptionUpdate = (text, progressInfo) => {
     // 更新进度状态
     if (progressInfo) {
@@ -641,75 +725,41 @@ export default function MobileChatScreen({ navigation, route }) {
       setTranscriptionProgress(progressInfo.progress);
     }
     
-    // 检查文本是否有内容
-    if (text && text.trim()) {
-      console.log("转录文本已更新:", text);
-      
-      // 如果当前有正在录音的消息ID
-      if (transcribingMessageId) {
-        // 更新现有的转录消息
-        setMessages(prev => {
-          // 查找现有的转录消息
-          const messageExists = prev.some(msg => msg.id === transcribingMessageId);
-          
-          // 如果找到消息，更新它
-          if (messageExists) {
-            return prev.map(msg => 
-              msg.id === transcribingMessageId 
-                ? { ...msg, text: text.trim() } 
-                : msg
-            );
-          } else {
-            // 如果消息已经被删除，重新创建一个
-            const newMessage = {
-              id: transcribingMessageId,
-              type: 'text',
-              text: text.trim(),
-              isTranscribing: true,
-              timestamp: new Date()
-            };
-            return [...prev, newMessage];
-          }
-        });
-      } else {
-        // 如果没有正在转录的消息ID，创建一个新的
-        const newMessageId = Date.now().toString();
-        const newMessage = {
-          id: newMessageId,
-          type: 'text',
-          text: text.trim(),
-          isTranscribing: true,
-          timestamp: new Date()
-        };
-        
-        // 添加到消息列表
-        setMessages(prev => [...prev, newMessage]);
-        // 设置当前转录消息ID
-        setTranscribingMessageId(newMessageId);
-        
-        // 如果在自由模式下，设置位置
-        if (hasUsedFreeMode) {
-          // 找到现有消息中 y 坐标最大的
-          let maxY = 0;
-          Object.values(messagePositions).forEach(pos => {
-            if (pos.y > maxY) maxY = pos.y;
-          });
-          
-          setMessagePositions(prev => ({
-            ...prev,
-            [newMessageId]: {
-              x: 20,
-              y: maxY + 80
-            }
-          }));
+    // 使用ref获取消息ID
+    const currentId = transcribingMessageIdRef.current;
+    console.log(`接收到转录更新: "${text}", REF ID: ${currentId}`);
+    
+    // 检查是否有有效文本和转录ID
+    if (text && text.trim() && currentId) {
+      // 追加新文本而不是覆盖
+      setMessages(prev => {
+        // 先检查消息是否存在
+        const messageExists = prev.some(msg => msg.id === currentId);
+        if (!messageExists) {
+          console.warn("找不到要更新的消息:", currentId);
+          return prev;
         }
-      }
-      
-      // 更新上一次转录文本
-      setLastTranscriptionText(text.trim());
+        
+        return prev.map(msg => {
+          if (msg.id === currentId) {
+            // 如果消息当前为"正在倾听..."，则替换它
+            // 否则，追加新的转录文本
+            const currentText = msg.text === "正在倾听..." ? "" : msg.text;
+            const updatedText = currentText ? `${currentText} ${text.trim()}` : text.trim();
+            
+            console.log("更新消息文本:", updatedText);
+            return { ...msg, text: updatedText };
+          }
+          return msg;
+        });
+      });
       
       // 自动滚动到底部
       setTimeout(() => scrollToBottom(false), 100);
+    } else {
+      console.log("未更新消息: 文本为空或ID不存在", 
+        "文本:", text, 
+        "REF ID:", currentId);
     }
   };
 
@@ -727,43 +777,6 @@ export default function MobileChatScreen({ navigation, route }) {
       }
     };
   }, []);
-
-  const toggleRecording = async () => {
-    try {
-      if (isRecording) {
-        // 结束录音
-        console.log("Stopping recording...");
-        const text = await speechToTextRef.current.stopRecording();
-        console.log("Got text:", text);
-        
-        // 清除所有消息的转录状态，但保留内容
-        setMessages(prev => prev.map(msg => 
-          msg.isTranscribing ? { ...msg, isTranscribing: false } : msg
-        ));
-        
-        // 重置相关状态
-        setTranscribingMessageId(null);
-        setLastTranscriptionText("");
-        setIsRecording(false);
-      } else {
-        // 开始录音
-        console.log("Starting recording...");
-        const success = await speechToTextRef.current.startRecording();
-        if (success) {
-          // 确保我们启动了一个全新的录音会话
-          setIsRecording(true);
-          setTranscribingMessageId(null); // 确保创建新的消息
-          setLastTranscriptionText("");    // 重置上一次的文本
-        } else {
-          Alert.alert("录音失败", "无法启动录音，请检查麦克风权限");
-        }
-      }
-    } catch (error) {
-      console.error("录音操作错误:", error);
-      setIsRecording(false);
-      Alert.alert("录音错误", "录音过程中发生错误");
-    }
-  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -832,10 +845,10 @@ export default function MobileChatScreen({ navigation, route }) {
       {renderAttachmentBar()}
       
       {/* 输入区域 */}
-      <KeyboardAvoidingView 
+      <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
-        style={styles.keyboardAvoidContainer}
+        style={{}}
       >
         {isRecording && (
           <RecordingProgressBar 
@@ -885,53 +898,14 @@ export default function MobileChatScreen({ navigation, route }) {
               <Ionicons name="send" size={24} color="#0A84FF" />
             </TouchableOpacity>
           </View>
-        ) : (
-          <View style={styles.editContainer}>
-            <TextInput
-              style={styles.editInput}
-              value={editText}
-              onChangeText={setEditText}
-              multiline
-              autoFocus
-            />
-            <View style={styles.editButtons}>
-              <TouchableOpacity onPress={cancelEdit} style={styles.editButton}>
-                <Text style={styles.cancelText}>取消</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={saveEdit} style={styles.editButton}>
-                <Text style={styles.saveText}>保存</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
+        ) : null}
       </KeyboardAvoidingView>
+      
+      {/* 多选工具栏 */}
+      {renderMultiSelectToolbar()}
       
       {/* 上下文菜单 */}
       {renderContextMenu()}
-      
-      {showScalingTip && (
-        <View style={styles.scalingTip}>
-          <Ionicons name="finger-print" size={24} color="#fff" />
-          <Text style={styles.scalingTipText}>
-            使用双指捏合可调整消息大小
-          </Text>
-          <TouchableOpacity onPress={() => setShowScalingTip(false)}>
-            <Ionicons name="close-circle" size={20} color="#fff" />
-          </TouchableOpacity>
-        </View>
-      )}
-      
-      {/* 渲染iOS键盘顶部栏 */}
-      {renderInputAccessory()}
-
-      {/* 添加一个浮动的转录状态指示器 */}
-      {isTranscribing && (
-        <View style={styles.transcriptionOverlay}>
-          <Text style={styles.transcriptionText}>
-            {transcription || "正在聆听..."}
-          </Text>
-        </View>
-      )}
     </SafeAreaView>
   );
 }
@@ -941,268 +915,125 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#000',
   },
-  flexContainer: {
-    flex: 1,
-    display: 'flex',
-    flexDirection: 'column',
-  },
-  fullFlex: {
-    flex: 1,
-  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 4,
-    paddingVertical: 4,
-    backgroundColor: '#1E1E1E',
-    borderBottomWidth: 0.5,
-    borderBottomColor: '#333',
-    height: 42,
+    padding: 10,
   },
   headerTitle: {
-    fontSize: 15,
+    fontSize: 20,
     fontWeight: 'bold',
     color: '#fff',
+    flex: 1,
   },
   headerActions: {
     flexDirection: 'row',
+    alignItems: 'center',
   },
   headerButton: {
-    marginLeft: 12,
-    padding: 6,
+    padding: 10,
+  },
+  recordingActive: {
+    backgroundColor: '#FF453A',
   },
   activeHeaderButton: {
-    backgroundColor: 'rgba(76, 175, 80, 0.2)',
-    borderRadius: 8,
+    backgroundColor: '#0A84FF',
+  },
+  messageContainer: {
+    flex: 1,
+  },
+  freePositionContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  freePositionMessage: {
+    position: 'absolute',
+  },
+  draggingMessage: {
+    borderWidth: 2,
+    borderColor: '#FF453A',
   },
   messagesContainer: {
     flex: 1,
-    backgroundColor: '#000',
-    minHeight: 100,
   },
   messagesList: {
-    padding: 4,
-    flexGrow: 1,
+    padding: 10,
   },
-  freePositionContainer: {
+  attachmentBar: {
+    flexDirection: 'row',
+    padding: 10,
+  },
+  attachmentButton: {
     flex: 1,
-    position: 'relative',
-    backgroundColor: '#121212',
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#fff',
+    borderRadius: 5,
+  },
+  attachmentIconContainer: {
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  attachmentText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginTop: 5,
+  },
+  keyboardAvoidContainer: {
+    // 删除flex: 1
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 6,
-    height: 48,
-    backgroundColor: '#1C1C1E',
-    borderTopWidth: 0.5,
-    borderTopColor: '#38383A',
+    padding: 10,
   },
   attachButton: {
-    padding: 8,
+    padding: 10,
   },
   input: {
     flex: 1,
-    backgroundColor: '#2C2C2E',
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    color: '#fff',
-    maxHeight: 100,
-    marginRight: 8,
-    fontSize: 14,
+    padding: 10,
   },
   sendButton: {
-    padding: 8,
+    padding: 10,
   },
-  editContainer: {
-    backgroundColor: '#1C1C1E',
-    padding: 12,
-    borderRadius: 16,
-    margin: 8,
-  },
-  editInput: {
-    backgroundColor: '#2C2C2E',
-    borderRadius: 8,
-    padding: 12,
-    color: '#fff',
-    minHeight: 80,
-  },
-  editButtons: {
+  multiSelectToolbar: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
-    marginTop: 8,
+    alignItems: 'center',
+    padding: 10,
   },
-  editButton: {
-    marginLeft: 16,
-    padding: 8,
+  selectedCount: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#fff',
+    flex: 1,
   },
-  cancelText: {
-    color: '#FF453A',
+  multiSelectAction: {
+    padding: 10,
   },
-  saveText: {
-    color: '#0A84FF',
+  closeMultiSelectButton: {
+    padding: 10,
   },
   contextMenuOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
   },
   contextMenu: {
-    position: 'absolute',
-    backgroundColor: '#2C2C2E',
-    borderRadius: 12,
-    padding: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
+    backgroundColor: '#fff',
+    padding: 10,
+    borderRadius: 5,
   },
   contextMenuItem: {
+    padding: 10,
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#3A3A3C',
   },
   contextMenuText: {
-    color: '#fff',
     fontSize: 16,
-    marginLeft: 12,
+    color: '#000',
+    marginLeft: 10,
   },
-  multiSelectToolbar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    backgroundColor: '#1C1C1E',
-  },
-  selectedCount: {
-    color: '#fff',
-    flex: 1,
-  },
-  multiSelectAction: {
-    marginLeft: 16,
-  },
-  closeMultiSelectButton: {
-    marginLeft: 16,
-  },
-  freePositionMessage: {
-    position: 'absolute',
-    maxWidth: 350,
-  },
-  draggingMessage: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.5,
-    shadowRadius: 10,
-    elevation: 10,
-    opacity: 0.9,
-  },
-  messageItem: {
-    marginBottom: 2,
-  },
-  messagesContainerWithAttachments: {
-    paddingTop: 8,
-    marginBottom: 0,
-  },
-  attachmentBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    backgroundColor: '#1C1C1E',
-    paddingVertical: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#2C2C2E',
-  },
-  attachmentButton: {
-    alignItems: 'center',
-    width: 70,
-  },
-  attachmentIconContainer: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: '#2C2C2E',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  attachmentText: {
-    color: '#fff',
-    fontSize: 12,
-  },
-  scalingTip: {
-    position: 'absolute',
-    top: 80,
-    left: 20,
-    right: 20,
-    backgroundColor: 'rgba(10, 132, 255, 0.8)',
-    borderRadius: 12,
-    padding: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    zIndex: 1000,
-  },
-  scalingTipText: {
-    color: '#fff',
-    flex: 1,
-    marginHorizontal: 12,
-  },
-  keyboardAvoidContainer: {
-    width: '100%',
-    backgroundColor: '#1C1C1E',
-  },
-  inputAccessory: {
-    backgroundColor: '#222222',
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    height: 36,
-  },
-  keyboardDismissButton: {
-    padding: 8,
-    backgroundColor: '#333333',
-    borderRadius: 4,
-  },
-  messageContainer: {
-    flex: 1,
-    backgroundColor: '#000',
-  },
-  recordingActive: {
-    backgroundColor: 'rgba(255, 69, 58, 0.3)',
-    borderRadius: 16,
-  },
-  transcriptionOverlay: {
-    position: 'absolute',
-    bottom: 80,
-    left: 20,
-    right: 20,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    borderRadius: 12,
-    padding: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 5,
-  },
-  transcriptionText: {
-    color: '#fff',
-    fontSize: 16,
-    textAlign: 'center',
-  },
-  topBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  voiceButton: {
-    padding: 10,
-    borderRadius: 50,
-    backgroundColor: '#eee',
-  },
-  recordingButton: {
-    backgroundColor: '#ffeeee',
-  },
-}); 
+});

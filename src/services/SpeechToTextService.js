@@ -216,30 +216,38 @@ export default class SpeechToTextService {
         
         // 如果有转录结果，添加到数组
         if (transcription && transcription.trim() !== '') {
+          // 保存这个新的转录结果
           newTranscriptions.push(transcription);
+          
+          // 每处理一个文件就更新一次UI，以显示增量更新
+          if (newTranscriptions.length > 0 && typeof this.onTranscriptionUpdate === 'function') {
+            // 将新转录结果传递给回调，标记为增量更新
+            console.log("发送增量转录更新:", transcription);
+            
+            const now = new Date();
+            const totalDuration = (now - this.recordingStartTime) / 1000;
+            const estimatedTranscribedDuration = this.processingIndex * 3;
+            const progress = Math.min(1.0, estimatedTranscribedDuration / totalDuration);
+            
+            // 增加一个参数指示这是增量更新
+            this.onTranscriptionUpdate(transcription.trim(), {
+              totalDuration,
+              transcribedDuration: estimatedTranscribedDuration,
+              progress,
+              isIncremental: true // 标记为增量更新
+            });
+          }
         }
         
         this.processingIndex++;
       }
       
-      // 如果有新的转录结果，更新总转录文本
+      // 收集的转录文本加入总转录文本
       if (newTranscriptions.length > 0) {
-        // 直接使用新收集的所有转录，而不是累加到之前的文本
-        this.transcription = newTranscriptions.join(' ');
-        
-        // 更新UI
-        if (this.onTranscriptionUpdate) {
-          const now = new Date();
-          const totalDuration = (now - this.recordingStartTime) / 1000;
-          const estimatedTranscribedDuration = this.processingIndex * 3; // 每段约3秒
-          
-          const progress = Math.min(1.0, estimatedTranscribedDuration / totalDuration);
-          
-          this.onTranscriptionUpdate(this.transcription, {
-            totalDuration,
-            transcribedDuration: estimatedTranscribedDuration,
-            progress
-          });
+        if (this.transcription) {
+          this.transcription += ' ' + newTranscriptions.join(' ');
+        } else {
+          this.transcription = newTranscriptions.join(' ');
         }
       }
     } catch (error) {
