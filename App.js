@@ -2,7 +2,7 @@ import 'react-native-gesture-handler';
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
-import { StyleSheet, View, Platform, TouchableOpacity, Text, Dimensions } from 'react-native';
+import { StyleSheet, View, Platform, TouchableOpacity, Text, Dimensions, StatusBar } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import HomeScreen from './screens/HomeScreen';
 import CameraScreen from './screens/CameraScreen';
@@ -15,6 +15,9 @@ import WebChatScreen from './src/screens/web/ChatScreen';
 const Stack = createStackNavigator();
 
 function App() {
+  // 设置状态栏为亮色内容(白色图标)
+  StatusBar.setBarStyle('light-content', true);
+  
   // 根据平台决定容器样式和聊天组件
   const containerStyle = Platform.OS === 'web' 
     ? styles.webContainer 

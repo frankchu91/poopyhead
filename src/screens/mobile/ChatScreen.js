@@ -526,6 +526,16 @@ export default function MobileChatScreen({ navigation, route }) {
       <Text style={styles.headerTitle}>Chat</Text>
       
       <View style={styles.headerActions}>
+        {/* 收起键盘按钮 */}
+        {keyboardVisible && (
+          <TouchableOpacity 
+            style={styles.headerButton} 
+            onPress={() => Keyboard.dismiss()}
+          >
+            <Ionicons name="chevron-down" size={22} color="#fff" />
+          </TouchableOpacity>
+        )}
+        
         <TouchableOpacity 
           style={[
             styles.headerButton, 
@@ -778,12 +788,20 @@ export default function MobileChatScreen({ navigation, route }) {
     };
   }, []);
 
+  // 添加点击事件处理函数
+  const hideKeyboardOnAreaTap = () => {
+    Keyboard.dismiss();
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       {renderHeader()}
       
       {/* 消息区域 - 修复布局 */}
-      <View style={styles.messageContainer}>
+      <View 
+        style={styles.messageContainer}
+        onTouchStart={hideKeyboardOnAreaTap}
+      >
         {freePositionMode ? (
           // 自由模式布局
           <View style={styles.freePositionContainer}>
@@ -820,23 +838,25 @@ export default function MobileChatScreen({ navigation, route }) {
         ) : (
           // 列表模式布局
           <View style={styles.messagesContainer}>
-            <FlatList
-              ref={flatListRef}
-              data={messages}
-              renderItem={renderMessageItem}
-              keyExtractor={(item) => item.id}
-              contentContainerStyle={styles.messagesList}
-              style={[styles.fullFlex, { backgroundColor: '#000' }]}
-              removeClippedSubviews={false}
-              windowSize={7}
-              initialNumToRender={15}
-              maxToRenderPerBatch={10}
-              onContentSizeChange={() => {
-                if (flatListRef.current && messages.length > 0) {
-                  flatListRef.current.scrollToEnd({ animated: false });
-                }
-              }}
-            />
+            <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+              <FlatList
+                ref={flatListRef}
+                data={messages}
+                renderItem={renderMessageItem}
+                keyExtractor={(item) => item.id}
+                contentContainerStyle={styles.messagesList}
+                style={[styles.fullFlex, { backgroundColor: '#000' }]}
+                removeClippedSubviews={false}
+                windowSize={7}
+                initialNumToRender={15}
+                maxToRenderPerBatch={10}
+                onContentSizeChange={() => {
+                  if (flatListRef.current && messages.length > 0) {
+                    flatListRef.current.scrollToEnd({ animated: false });
+                  }
+                }}
+              />
+            </TouchableWithoutFeedback>
           </View>
         )}
       </View>
@@ -996,6 +1016,7 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     padding: 10,
+    color: '#FFFFFF',
   },
   sendButton: {
     padding: 10,
