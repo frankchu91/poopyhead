@@ -526,15 +526,7 @@ export default function MobileChatScreen({ navigation, route }) {
       <Text style={styles.headerTitle}>Chat</Text>
       
       <View style={styles.headerActions}>
-        {/* 收起键盘按钮 */}
-        {keyboardVisible && (
-          <TouchableOpacity 
-            style={styles.headerButton} 
-            onPress={() => Keyboard.dismiss()}
-          >
-            <Ionicons name="chevron-down" size={22} color="#fff" />
-          </TouchableOpacity>
-        )}
+
         
         <TouchableOpacity 
           style={[
@@ -868,7 +860,7 @@ export default function MobileChatScreen({ navigation, route }) {
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
-        style={{}}
+        style={{ backgroundColor: '#1A1A1A' }}
       >
         {isRecording && (
           <RecordingProgressBar 
@@ -881,13 +873,13 @@ export default function MobileChatScreen({ navigation, route }) {
         )}
         
         {!editingMessage ? (
-          <View style={styles.inputContainer}>
+          <View style={[styles.inputContainer, { backgroundColor: '#1A1A1A', borderTopWidth: 0.5, borderTopColor: '#333' }]}>
             <TouchableOpacity style={styles.attachButton} onPress={() => setShowAttachBar(!showAttachBar)}>
               <Ionicons name="add-circle" size={24} color="#0A84FF" />
             </TouchableOpacity>
             
             <TextInput
-              style={styles.input}
+              style={[styles.input, { backgroundColor: '#2C2C2E', borderRadius: 18, color: '#FFFFFF' }]}
               placeholder="输入消息..."
               placeholderTextColor="#8E8E93"
               value={inputText}
