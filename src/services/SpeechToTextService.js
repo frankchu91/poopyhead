@@ -411,4 +411,35 @@ export default class SpeechToTextService {
       return '';
     }
   }
+
+  // 取消录音
+  async cancelRecording() {
+    try {
+      if (this.recording) {
+        console.log("正在取消录音...");
+        
+        // 停止录音计时器
+        if (this.recordingInterval) {
+          clearInterval(this.recordingInterval);
+          this.recordingInterval = null;
+        }
+        
+        // 停止录音
+        await this.recording.stopAndUnloadAsync();
+        
+        // 重置录音相关状态
+        this.recording = null;
+        this.isRecording = false;
+        this.audioFiles = [];
+        this.processingIndex = 0;
+        this.isProcessing = false;
+        this.transcription = "";
+        this.recordingStartTime = null;
+        
+        console.log("录音已取消，资源已清理");
+      }
+    } catch (error) {
+      console.error("取消录音时出错:", error);
+    }
+  }
 } 

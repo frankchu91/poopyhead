@@ -516,7 +516,7 @@ export default function MobileChatScreen({ navigation, route }) {
     );
   };
 
-  // 修复renderHeader函数中的函数引用问题
+  // 修改renderHeader函数，移除录音按钮
   const renderHeader = () => (
     <View style={styles.header}>
       <TouchableOpacity onPress={() => navigation.goBack()}>
@@ -526,23 +526,7 @@ export default function MobileChatScreen({ navigation, route }) {
       <Text style={styles.headerTitle}>Chat</Text>
       
       <View style={styles.headerActions}>
-
-        
-        <TouchableOpacity 
-          style={[
-            styles.headerButton, 
-            isRecording ? { backgroundColor: '#FF453A', borderRadius: 20 } : styles.recordingActive
-          ]}
-          onPress={toggleRecording}
-          disabled={isProcessingVoice}
-        >
-          <Ionicons 
-            name={isRecording ? "stop-circle" : "mic-outline"} 
-            size={22} 
-            color={isRecording ? "#fff" : "#fff"} 
-          />
-        </TouchableOpacity>
-        
+        {/* 移除录音按钮，只保留其他功能按钮 */}
         <TouchableOpacity style={styles.headerButton} onPress={() => {}}>
           <Ionicons name="refresh" size={22} color="#fff" />
         </TouchableOpacity>
@@ -785,6 +769,54 @@ export default function MobileChatScreen({ navigation, route }) {
     Keyboard.dismiss();
   };
 
+  // 添加取消录音的方法
+  const cancelRecording = () => {
+    // 如果正在录音，取消它
+    if (isRecording && speechToTextRef.current) {
+      // 停止录音但不处理结果
+      speechToTextRef.current.cancelRecording();
+      
+      // 重置状态
+      setIsRecording(false);
+      setIsProcessingVoice(false);
+      setRecordingDuration(0);
+      setTranscriptionProgress(0);
+      setTranscribedDuration(0);
+      setTotalDuration(0);
+      setTranscribingMessageId(null);
+      transcribingMessageIdRef.current = null;
+      
+      // 可选：移除"正在倾听..."消息
+      setMessages(prev => prev.filter(msg => msg.id !== transcribingMessageIdRef.current));
+      
+      console.log("录音已取消");
+    }
+  };
+
+  // 修改录音按钮逻辑
+  const handleRecordingAction = () => {
+    if (isRecording) {
+      // 已经在录音，显示确认对话框
+      Alert.alert(
+        "结束录音",
+        "您确定要结束当前录音吗？",
+        [
+          {
+            text: "取消",
+            style: "cancel"
+          },
+          { 
+            text: "确定", 
+            onPress: toggleRecording 
+          }
+        ]
+      );
+    } else {
+      // 开始新录音
+      toggleRecording();
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       {renderHeader()}
@@ -900,14 +932,17 @@ export default function MobileChatScreen({ navigation, route }) {
             />
             
             <TouchableOpacity 
-              style={styles.sendButton}
-              onPress={() => {
-                if (inputText.trim()) {
-                  handleSendMessage();
-                }
-              }}
+              style={[styles.sendButton, isRecording && { backgroundColor: '#FF453A', borderRadius: 20 }]}
+              onPress={handleRecordingAction}
+              onLongPress={cancelRecording}
+              delayLongPress={500}
+              disabled={isProcessingVoice}
             >
-              <Ionicons name="send" size={24} color="#0A84FF" />
+              <Ionicons 
+                name={isRecording ? "stop-circle" : "mic-outline"} 
+                size={22} 
+                color={isRecording ? "#fff" : "#0A84FF"} 
+              />
             </TouchableOpacity>
           </View>
         ) : null}
