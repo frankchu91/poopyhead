@@ -643,56 +643,73 @@ export default function MobileChatScreen({ navigation, route }) {
     
     // 检查文本是否有内容
     if (text && text.trim()) {
-      // 检查是否有新内容 - 防止创建重复消息
-      if (text.trim() !== lastTranscriptionText.trim()) {
-        console.log("转录文本已更新:", text);
-        
-        // 如果当前没有正在转录的消息，创建一个新的
-        if (!transcribingMessageId) {
-          const newMessageId = Date.now().toString();
-          const newMessage = {
-            id: newMessageId,
-            type: 'text',
-            text: text.trim(),
-            isTranscribing: true,
-            timestamp: new Date()
-          };
+      console.log("转录文本已更新:", text);
+      
+      // 如果当前有正在录音的消息ID
+      if (transcribingMessageId) {
+        // 更新现有的转录消息
+        setMessages(prev => {
+          // 查找现有的转录消息
+          const messageExists = prev.some(msg => msg.id === transcribingMessageId);
           
-          // 添加到消息列表
-          setMessages(prev => [...prev, newMessage]);
-          setTranscribingMessageId(newMessageId);
-          
-          // 如果在自由模式下，设置位置
-          if (hasUsedFreeMode) {
-            // 找到现有消息中 y 坐标最大的
-            let maxY = 0;
-            Object.values(messagePositions).forEach(pos => {
-              if (pos.y > maxY) maxY = pos.y;
-            });
-            
-            setMessagePositions(prev => ({
-              ...prev,
-              [newMessageId]: {
-                x: 20,
-                y: maxY + 80
-              }
-            }));
+          // 如果找到消息，更新它
+          if (messageExists) {
+            return prev.map(msg => 
+              msg.id === transcribingMessageId 
+                ? { ...msg, text: text.trim() } 
+                : msg
+            );
+          } else {
+            // 如果消息已经被删除，重新创建一个
+            const newMessage = {
+              id: transcribingMessageId,
+              type: 'text',
+              text: text.trim(),
+              isTranscribing: true,
+              timestamp: new Date()
+            };
+            return [...prev, newMessage];
           }
-        } else {
-          // 更新现有的转录消息
-          setMessages(prev => prev.map(msg => 
-            msg.id === transcribingMessageId 
-              ? { ...msg, text: text.trim() } 
-              : msg
-          ));
+        });
+      } else {
+        // 如果没有正在转录的消息ID，创建一个新的
+        const newMessageId = Date.now().toString();
+        const newMessage = {
+          id: newMessageId,
+          type: 'text',
+          text: text.trim(),
+          isTranscribing: true,
+          timestamp: new Date()
+        };
+        
+        // 添加到消息列表
+        setMessages(prev => [...prev, newMessage]);
+        // 设置当前转录消息ID
+        setTranscribingMessageId(newMessageId);
+        
+        // 如果在自由模式下，设置位置
+        if (hasUsedFreeMode) {
+          // 找到现有消息中 y 坐标最大的
+          let maxY = 0;
+          Object.values(messagePositions).forEach(pos => {
+            if (pos.y > maxY) maxY = pos.y;
+          });
+          
+          setMessagePositions(prev => ({
+            ...prev,
+            [newMessageId]: {
+              x: 20,
+              y: maxY + 80
+            }
+          }));
         }
-        
-        // 更新上一次转录文本
-        setLastTranscriptionText(text.trim());
-        
-        // 自动滚动到底部
-        setTimeout(() => scrollToBottom(false), 100);
       }
+      
+      // 更新上一次转录文本
+      setLastTranscriptionText(text.trim());
+      
+      // 自动滚动到底部
+      setTimeout(() => scrollToBottom(false), 100);
     }
   };
 
@@ -719,7 +736,7 @@ export default function MobileChatScreen({ navigation, route }) {
         const text = await speechToTextRef.current.stopRecording();
         console.log("Got text:", text);
         
-        // 清除所有消息的转录状态
+        // 清除所有消息的转录状态，但保留内容
         setMessages(prev => prev.map(msg => 
           msg.isTranscribing ? { ...msg, isTranscribing: false } : msg
         ));
@@ -733,9 +750,10 @@ export default function MobileChatScreen({ navigation, route }) {
         console.log("Starting recording...");
         const success = await speechToTextRef.current.startRecording();
         if (success) {
+          // 确保我们启动了一个全新的录音会话
           setIsRecording(true);
-          setTranscribingMessageId(null);
-          setLastTranscriptionText("");
+          setTranscribingMessageId(null); // 确保创建新的消息
+          setLastTranscriptionText("");    // 重置上一次的文本
         } else {
           Alert.alert("录音失败", "无法启动录音，请检查麦克风权限");
         }

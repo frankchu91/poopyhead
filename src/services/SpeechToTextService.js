@@ -205,41 +205,42 @@ export default class SpeechToTextService {
     this.isProcessing = true;
     
     try {
+      // 收集所有待处理文件的转录结果
+      const newTranscriptions = [];
+      
       while (this.processingIndex < this.audioFiles.length) {
         const fileUri = this.audioFiles[this.processingIndex];
         
         // 转录这个文件
         const transcription = await this.transcribeAudioChunk(fileUri);
         
-        // 如果有转录结果，更新UI
+        // 如果有转录结果，添加到数组
         if (transcription && transcription.trim() !== '') {
-          // 添加到当前转录
-          if (this.transcription === '') {
-            this.transcription = transcription;
-          } else {
-            // 简单拼接，可以改进为更智能的合并
-            this.transcription += ' ' + transcription;
-          }
-          
-          // 更新UI
-          if (this.onTranscriptionUpdate) {
-            // 计算进度
-            const now = new Date();
-            const totalDuration = (now - this.recordingStartTime) / 1000;
-            const estimatedTranscribedDuration = 
-              (this.processingIndex + 1) * 3; // 每段大约3秒
-            
-            const progress = Math.min(1.0, estimatedTranscribedDuration / totalDuration);
-            
-            this.onTranscriptionUpdate(this.transcription, {
-              totalDuration,
-              transcribedDuration: estimatedTranscribedDuration,
-              progress
-            });
-          }
+          newTranscriptions.push(transcription);
         }
         
         this.processingIndex++;
+      }
+      
+      // 如果有新的转录结果，更新总转录文本
+      if (newTranscriptions.length > 0) {
+        // 直接使用新收集的所有转录，而不是累加到之前的文本
+        this.transcription = newTranscriptions.join(' ');
+        
+        // 更新UI
+        if (this.onTranscriptionUpdate) {
+          const now = new Date();
+          const totalDuration = (now - this.recordingStartTime) / 1000;
+          const estimatedTranscribedDuration = this.processingIndex * 3; // 每段约3秒
+          
+          const progress = Math.min(1.0, estimatedTranscribedDuration / totalDuration);
+          
+          this.onTranscriptionUpdate(this.transcription, {
+            totalDuration,
+            transcribedDuration: estimatedTranscribedDuration,
+            progress
+          });
+        }
       }
     } catch (error) {
       console.error('Error processing audio files:', error);
@@ -273,13 +274,13 @@ export default class SpeechToTextService {
           
           // 添加到文件列表
           this.audioFiles.push(uri);
-          
-          // 处理所有剩余文件
-          await this.processAudioFiles();
         } else {
           await this.recording.stopAndUnloadAsync();
         }
       }
+      
+      // 处理所有剩余文件 - 但只更新一次UI
+      await this.processRemainingFiles();
     } catch (error) {
       console.warn("Note: Recording may have already been stopped:", error.message);
     }
@@ -289,6 +290,45 @@ export default class SpeechToTextService {
     
     console.log("Recording stopped");
     return this.transcription;
+  }
+  
+  // 新增专门处理剩余文件的方法
+  async processRemainingFiles() {
+    if (this.processingIndex >= this.audioFiles.length) return;
+    
+    try {
+      const pendingFiles = this.audioFiles.slice(this.processingIndex);
+      const allTranscriptions = [];
+      
+      for (const fileUri of pendingFiles) {
+        const transcription = await this.transcribeAudioChunk(fileUri);
+        if (transcription && transcription.trim()) {
+          allTranscriptions.push(transcription);
+        }
+        this.processingIndex++;
+      }
+      
+      // 合并所有待处理文件的转录结果
+      if (allTranscriptions.length > 0) {
+        // 整合到当前转录
+        if (this.transcription) {
+          this.transcription += ' ' + allTranscriptions.join(' ');
+        } else {
+          this.transcription = allTranscriptions.join(' ');
+        }
+        
+        // 最后一次更新UI
+        if (this.onTranscriptionUpdate) {
+          this.onTranscriptionUpdate(this.transcription, {
+            totalDuration: (new Date() - this.recordingStartTime) / 1000,
+            transcribedDuration: this.audioFiles.length * 3,
+            progress: 1.0
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error processing remaining files:', error);
+    }
   }
   
   // 清理所有资源
