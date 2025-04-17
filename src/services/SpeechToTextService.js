@@ -14,282 +14,26 @@ function debugLog(step, data) {
 
 export default class SpeechToTextService {
   constructor(onTranscriptionUpdate) {
-    this.ws = null;
     this.recording = null;
     this.isRecording = false;
     this.recordingInterval = null;
     this.onTranscriptionUpdate = onTranscriptionUpdate;
     this.transcription = "";
-    this.sessionId = null;
-    
-    // 添加用于跟踪时间的变量
     this.recordingStartTime = null;
-    this.lastTranscriptionTime = null;
-    this.estimatedTranscribedDuration = 0;
-    this.totalRecordingDuration = 0;
-  }
-
-  // 初始化 WebSocket 连接 - 使用子协议进行认证
-  async initWebSocket() {
-    try {
-      // 直接连接到OpenAI API，使用子协议进行认证
-      const url = "wss://api.openai.com/v1/realtime?intent=transcription";
-      debugLog('WS_URL', url);
-      
-      // 定义子协议数组，包含认证信息
-      const protocols = [
-        "realtime",
-        // 认证
-        "openai-insecure-api-key." + API_KEY,
-        // Beta协议，必需
-        "openai-beta.realtime-v1"
-      ];
-      
-      return new Promise((resolve, reject) => {
-        // 创建WebSocket连接，使用子协议进行认证
-        this.ws = new WebSocket(url, protocols);
-        
-        // 设置连接超时
-        const connectionTimeout = setTimeout(() => {
-          debugLog('CONNECTION_TIMEOUT', 'Connection timed out');
-          reject(new Error('WebSocket connection timed out'));
-          if (this.ws) this.ws.close();
-        }, 10000);
-        
-        // WebSocket 打开时
-        this.ws.onopen = () => {
-          debugLog('WS_OPEN', 'WebSocket connection established');
-          clearTimeout(connectionTimeout);
-          
-          // 创建一个新的会话ID (如果没有的话)
-          if (!this.sessionId) {
-            this.sessionId = 'session_' + Math.random().toString(36).substring(2, 15);
-          }
-          
-          // 发送配置 - 按照文档示例结构
-          const config = {
-            type: "transcription_session.update",
-            session: {
-              input_audio_format: "pcm16",
-              input_audio_transcription: {
-                model: "gpt-4o-transcribe",  // 使用我们的模型
-                prompt: "",
-                language: "zh"  
-              },
-              turn_detection: {
-                type: "server_vad",
-                threshold: 0.5,
-                prefix_padding_ms: 300,
-                silence_duration_ms: 500
-              },
-              input_audio_noise_reduction: {
-                type: "near_field"
-              }
-            }
-          };
-          
-          debugLog('SENDING_CONFIG', JSON.stringify(config));
-          this.ws.send(JSON.stringify(config));
-          
-          // 解决 Promise
-          resolve();
-        };
-        
-        // 接收消息 - 根据OpenAI文档处理所有服务器事件
-        this.ws.onmessage = (event) => {
-          try {
-            const message = JSON.parse(event.data);
-            // debugLog('现在开始Debug消息啦，注意好了')
-            debugLog('WS_MESSAGE', message.type || 'Unknown message type');
-            
-            // 处理不同类型的服务器事件
-            switch (message.type) {
-              case 'error':
-                // 错误事件
-                debugLog('WS_ERROR', JSON.stringify(message.error));
-                break;
-                
-              case 'session.created':
-                // 会话创建事件
-                debugLog('SESSION_CREATED', `Session ID: ${message.session?.id}`);
-                // 保存服务器分配的会话ID（如果有）
-                if (message.session?.id) {
-                  this.sessionId = message.session.id;
-                }
-                break;
-                
-              case 'session.updated':
-                // 会话更新事件
-                debugLog('SESSION_UPDATED', `Session ID: ${message.session?.id}`);
-                break;
-                
-              case 'conversation.item.input_audio_transcription.completed':
-                // 转录事件 - 包含转录文本
-                debugLog('进来这边转录了', JSON.stringify(message))
-                const text = message.transcript;
-                if (text) {
-                  debugLog('TRANSCRIPTION', text);
-                  this.transcription = text;
-                  
-                  // 计算经过的时间和估计的转录进度
-                  const now = new Date();
-                  if (this.recordingStartTime) {
-                    // 计算总录音时长（秒）
-                    this.totalRecordingDuration = (now - this.recordingStartTime) / 1000;
-                    
-                    // 基于文本量估算已转录的时长
-                    // 假设平均每秒2.5个中文字符或5个英文单词
-                    // 这是一个粗略估计，可以根据实际情况调整
-                    const wordCount = text.split(/\s+/).length;
-                    const charCount = text.replace(/\s+/g, '').length;
-                    
-                    // 估算已转录的音频时长（秒）
-                    // 对于中文和英文混合文本使用组合公式
-                    this.estimatedTranscribedDuration = Math.min(
-                      this.totalRecordingDuration,
-                      (wordCount / 5 + charCount / 2.5) / 2
-                    );
-                    
-                    // 计算转录进度百分比
-                    const progress = this.totalRecordingDuration > 0 
-                      ? this.estimatedTranscribedDuration / this.totalRecordingDuration 
-                      : 0;
-                    
-                    // 如果回调存在，将转录文本和进度信息传递给回调
-                    if (this.onTranscriptionUpdate) {
-                      this.onTranscriptionUpdate(text, {
-                        totalDuration: this.totalRecordingDuration,
-                        transcribedDuration: this.estimatedTranscribedDuration,
-                        progress: progress
-                      });
-                    }
-                  }
-                }
-                break;
-                
-              case 'audio_buffer.appended':
-                // 音频缓冲区追加事件
-                debugLog('AUDIO_APPENDED', `Bytes: ${message.bytes_appended}`);
-                break;
-                
-              case 'audio_buffer.committed':
-                // 音频缓冲区提交事件
-                debugLog('AUDIO_COMMITTED', `Bytes: ${message.bytes_committed}`);
-                break;
-                
-              case 'audio_buffer.cleared':
-                // 音频缓冲区清除事件
-                debugLog('AUDIO_CLEARED', 'Audio buffer cleared');
-                break;
-                
-              case 'turn.started':
-                // 语音轮次开始事件
-                debugLog('TURN_STARTED', `Turn ID: ${message.turn?.id}`);
-                break;
-                
-              case 'turn.ended':
-                // 语音轮次结束事件
-                debugLog('TURN_ENDED', `Turn ID: ${message.turn?.id}`);
-                break;
-                
-              case 'ping':
-                // 心跳检测事件 - 发送pong响应
-                this.ws.send(JSON.stringify({ type: 'pong' }));
-                break;
-                
-              default:
-                // 未知事件类型
-                debugLog('UNKNOWN_EVENT', JSON.stringify(message));
-                break;
-            }
-          } catch (parseError) {
-            debugLog('PARSE_ERROR', `Failed to parse message: ${parseError.message}`);
-          }
-        };
-        
-        // 错误处理
-        this.ws.onerror = (error) => {
-          debugLog('WS_ERROR', error.message || 'Unknown WebSocket error');
-          clearTimeout(connectionTimeout);
-          
-          // Try to reconnect if appropriate
-          if (this.isRecording) {
-            debugLog('WS_RECONNECT', 'Attempting to reconnect...');
-            setTimeout(() => this.initWebSocket(), 2000);
-          }
-          
-          reject(error);
-        };
-        
-        // 关闭处理
-        this.ws.onclose = (event) => {
-          debugLog('WS_CLOSE', `WebSocket closed (${event.code}): ${event.reason}`);
-          clearTimeout(connectionTimeout);
-        };
-      });
-    } catch (error) {
-      debugLog('INIT_ERROR', error.message);
-      throw error;
-    }
-  }
-
-  // 从录音中获取音频数据并发送到WebSocket
-  async sendAudioData() {
-    if (!this.recording || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
     
-    try {
-      // 获取临时文件 URI
-      const uri = this.recording.getURI();
-      if (!uri) return;
-      
-      // 获取录音状态
-      const status = await this.recording.getStatusAsync();
-      if (!status.isRecording && status.durationMillis <= 0) return;
-      
-      // 读取音频文件内容
-      const info = await FileSystem.getInfoAsync(uri);
-      if (!info.exists) return;
-      
-      // 读取文件内容为 base64
-      const base64Audio = await FileSystem.readAsStringAsync(uri, {
-        encoding: FileSystem.EncodingType.Base64
-      });
-      
-      if (base64Audio) {
-        // 发送音频数据 - 完全按照文档示例
-        const audioMessage = {
-          type: "input_audio_buffer.append",
-          audio: base64Audio
-          // 不包含session或content_type参数
-        };
- 
-        this.ws.send(JSON.stringify(audioMessage));
-      }
-    } catch (error) {
-      console.error('Error sending audio data:', error);
-    }
+    // 添加文件收集器
+    this.audioFiles = [];
+    this.processingIndex = 0;
+    this.isProcessing = false;
   }
 
   // 开始录音
   async startRecording() {
     try {
-      console.log("Starting recording...");
-      
-      // 清理现有录音
-      if (this.recording) {
-        await this.stopExistingRecording();
-      }
-      
-      // 初始化时间追踪变量
-      this.recordingStartTime = new Date();
-      this.lastTranscriptionTime = null;
-      this.estimatedTranscribedDuration = 0;
-      this.totalRecordingDuration = 0;
-      
-      // 请求麦克风权限
-      const permission = await Audio.requestPermissionsAsync();
-      if (permission.status !== 'granted') {
-        console.error('Permission denied');
+      // 请求录音权限
+      const permissionResponse = await Audio.requestPermissionsAsync();
+      if (permissionResponse.status !== 'granted') {
+        console.error('未授予录音权限');
         return false;
       }
       
@@ -297,15 +41,18 @@ export default class SpeechToTextService {
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
+        // 使用数字常量值
+        interruptionModeIOS: 1, // DO_NOT_MIX = 1
+        interruptionModeAndroid: 1, // DO_NOT_MIX = 1
       });
       
-      // 初始化 WebSocket
-      await this.initWebSocket();
+      // 确保任何现有录音已停止
+      await this.ensureNoActiveRecording();
       
-      // 创建录音对象
+      // 创建新录音对象
       this.recording = new Audio.Recording();
       
-      // 配置 PCM 16kHz 单声道
+      // 配置高质量音频
       await this.recording.prepareToRecordAsync({
         android: {
           extension: '.wav',
@@ -313,14 +60,11 @@ export default class SpeechToTextService {
           audioEncoder: Audio.RECORDING_OPTION_ANDROID_AUDIO_ENCODER_PCM_16BIT,
           sampleRate: 16000,
           numberOfChannels: 1,
-          bitRate: 256000,
         },
         ios: {
           extension: '.wav',
-          audioQuality: Audio.RECORDING_OPTION_IOS_AUDIO_QUALITY_MAX,
           sampleRate: 16000,
           numberOfChannels: 1,
-          bitRate: 256000,
           linearPCMBitDepth: 16,
           linearPCMIsBigEndian: false,
           linearPCMIsFloat: false,
@@ -328,155 +72,294 @@ export default class SpeechToTextService {
       });
       
       // 开始录音
+      await this.recording.startAsync();
+      
+      // 更新状态
       this.isRecording = true;
       this.transcription = "";
-      await this.recording.startAsync();
+      this.recordingStartTime = new Date();
+      this.audioFiles = [];
+      this.processingIndex = 0;
       
       console.log("Recording started");
       
-      // 设置定时器，定期发送音频数据
-      this.recordingInterval = setInterval(() => {
+      // 设置每3秒保存一次录音
+      this.recordingInterval = setInterval(async () => {
         if (this.isRecording) {
-          this.sendAudioData();
+          await this.saveCurrentSegment();
         }
-      }, 5000); // 每500毫秒发送一次
+      }, 3000);
       
       return true;
     } catch (error) {
       console.error('Start recording error:', error);
-      this.cleanupResources();
+      await this.cleanupResources();
       return false;
     }
   }
-
-  // 停止现有录音
-  async stopExistingRecording() {
-    if (!this.recording) return;
+  
+  // 确保没有活动的录音
+  async ensureNoActiveRecording() {
+    if (this.recording) {
+      try {
+        const status = await this.recording.getStatusAsync();
+        if (status.isRecording) {
+          await this.recording.stopAndUnloadAsync();
+        } else if (status.isDoneRecording) {
+          await this.recording.unloadAsync();
+        }
+      } catch (error) {
+        // 如果录音对象无效，忽略错误
+        console.warn("Warning while stopping recording:", error.message);
+      }
+      this.recording = null;
+    }
+  }
+  
+  // 保存当前录音段，并准备新段
+  async saveCurrentSegment() {
+    if (!this.isRecording || !this.recording) return;
     
     try {
-      const status = await this.recording.getStatusAsync();
+      // 暂停当前录音
+      await this.recording.pauseAsync();
       
-      if (status.isRecording) {
-        await this.recording.stopAndUnloadAsync();
-      } 
-      else if (status.isDoneRecording === false) {
-        await this.recording.stopAndUnloadAsync();
+      // 获取文件URI
+      const uri = this.recording.getURI();
+      
+      if (uri) {
+        // 添加到文件列表
+        this.audioFiles.push(uri);
+        
+        // 处理队列中的文件
+        if (!this.isProcessing) {
+          this.processAudioFiles();
+        }
+      }
+      
+      // 停止并卸载当前录音，准备创建新录音
+      await this.recording.stopAndUnloadAsync();
+      this.recording = null;
+      
+      // 创建新录音对象
+      this.recording = new Audio.Recording();
+      
+      // 配置高质量音频
+      await this.recording.prepareToRecordAsync({
+        android: {
+          extension: '.wav',
+          outputFormat: Audio.RECORDING_OPTION_ANDROID_OUTPUT_FORMAT_PCM_16BIT,
+          audioEncoder: Audio.RECORDING_OPTION_ANDROID_AUDIO_ENCODER_PCM_16BIT,
+          sampleRate: 16000,
+          numberOfChannels: 1,
+        },
+        ios: {
+          extension: '.wav',
+          sampleRate: 16000,
+          numberOfChannels: 1,
+          linearPCMBitDepth: 16,
+          linearPCMIsBigEndian: false,
+          linearPCMIsFloat: false,
+        },
+      });
+      
+      // 继续新录音
+      await this.recording.startAsync();
+      
+    } catch (error) {
+      console.error('Error saving segment:', error);
+      
+      // 如果失败，尝试重新开始录音
+      try {
+        await this.ensureNoActiveRecording();
+        
+        this.recording = new Audio.Recording();
+        await this.recording.prepareToRecordAsync({
+          android: {
+            extension: '.wav',
+            outputFormat: Audio.RECORDING_OPTION_ANDROID_OUTPUT_FORMAT_PCM_16BIT,
+            audioEncoder: Audio.RECORDING_OPTION_ANDROID_AUDIO_ENCODER_PCM_16BIT,
+            sampleRate: 16000,
+            numberOfChannels: 1,
+          },
+          ios: {
+            extension: '.wav',
+            sampleRate: 16000,
+            numberOfChannels: 1,
+            linearPCMBitDepth: 16,
+            linearPCMIsBigEndian: false,
+            linearPCMIsFloat: false,
+          },
+        });
+        await this.recording.startAsync();
+      } catch (restartError) {
+        console.error('Could not restart recording:', restartError);
+      }
+    }
+  }
+  
+  // 处理音频文件队列
+  async processAudioFiles() {
+    if (this.isProcessing || this.processingIndex >= this.audioFiles.length) return;
+    
+    this.isProcessing = true;
+    
+    try {
+      while (this.processingIndex < this.audioFiles.length) {
+        const fileUri = this.audioFiles[this.processingIndex];
+        
+        // 转录这个文件
+        const transcription = await this.transcribeAudioChunk(fileUri);
+        
+        // 如果有转录结果，更新UI
+        if (transcription && transcription.trim() !== '') {
+          // 添加到当前转录
+          if (this.transcription === '') {
+            this.transcription = transcription;
+          } else {
+            // 简单拼接，可以改进为更智能的合并
+            this.transcription += ' ' + transcription;
+          }
+          
+          // 更新UI
+          if (this.onTranscriptionUpdate) {
+            // 计算进度
+            const now = new Date();
+            const totalDuration = (now - this.recordingStartTime) / 1000;
+            const estimatedTranscribedDuration = 
+              (this.processingIndex + 1) * 3; // 每段大约3秒
+            
+            const progress = Math.min(1.0, estimatedTranscribedDuration / totalDuration);
+            
+            this.onTranscriptionUpdate(this.transcription, {
+              totalDuration,
+              transcribedDuration: estimatedTranscribedDuration,
+              progress
+            });
+          }
+        }
+        
+        this.processingIndex++;
       }
     } catch (error) {
-      console.warn("Error stopping recording:", error);
+      console.error('Error processing audio files:', error);
+    } finally {
+      this.isProcessing = false;
+    }
+  }
+  
+  // 停止录音并返回最终转录
+  async stopRecording() {
+    if (!this.isRecording) {
+      return this.transcription;
     }
     
-    this.recording = null;
-  }
-
-  // 清理资源
-  cleanupResources() {
-    // 清除发送间隔
+    console.log("Stopping recording...");
+    this.isRecording = false;
+    
+    // 清除定时器
     if (this.recordingInterval) {
       clearInterval(this.recordingInterval);
       this.recordingInterval = null;
     }
     
-    // 关闭 WebSocket
-    if (this.ws) {
-      try {
-        this.ws.close();
-      } catch (e) {
-        console.warn('Error closing WebSocket:', e);
-      }
-      this.ws = null;
-    }
-    
-    // 停止录音 - 只有在stopRecording没有处理时才尝试停止
-    if (this.recording && this.isRecording) {
-      try {
-        this.recording.stopAndUnloadAsync().catch(e => 
-          console.warn("Error stopping recording:", e)
-        );
-      } catch (e) {
-        console.warn("Error cleaning up recording:", e);
-      }
-    }
-    
-    // 无论如何都清除recording引用
-    this.recording = null;
-    this.isRecording = false;
-  }
-
-  // 停止录音
-  async stopRecording() {
     try {
-      if (!this.isRecording || !this.recording) {
-        return this.transcription;
+      // 保存最后一段录音
+      if (this.recording) {
+        const uri = this.recording.getURI();
+        if (uri) {
+          // 停止录音
+          await this.recording.stopAndUnloadAsync();
+          
+          // 添加到文件列表
+          this.audioFiles.push(uri);
+          
+          // 处理所有剩余文件
+          await this.processAudioFiles();
+        } else {
+          await this.recording.stopAndUnloadAsync();
+        }
       }
-      
-      console.log("Stopping recording...");
-      this.isRecording = false;
-      
-      // 计算最终的录音时长
-      if (this.recordingStartTime) {
-        this.totalRecordingDuration = (new Date() - this.recordingStartTime) / 1000;
-      }
-      
-      // 停止录音
-      try {
-        await this.recording.stopAndUnloadAsync();
-      } catch (stopError) {
-        // 如果已经停止，忽略错误
-        console.warn("Note: Recording may have already been stopped:", stopError.message);
-      }
-      
-      // 清理其他资源，但不再尝试停止录音
-      const recordingRef = this.recording;
-      this.recording = null;  // 先清除引用，防止cleanupResources再次尝试停止
-      this.cleanupResources();
-      
-      // 重置音频模式
+    } catch (error) {
+      console.warn("Note: Recording may have already been stopped:", error.message);
+    }
+    
+    // 清理资源
+    await this.cleanupResources();
+    
+    console.log("Recording stopped");
+    return this.transcription;
+  }
+  
+  // 清理所有资源
+  async cleanupResources() {
+    // 清除定时器
+    if (this.recordingInterval) {
+      clearInterval(this.recordingInterval);
+      this.recordingInterval = null;
+    }
+    
+    // 确保录音已停止
+    await this.ensureNoActiveRecording();
+    
+    // 重置音频模式
+    try {
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: false,
         playsInSilentModeIOS: false,
       });
-      
-      console.log("Recording stopped");
-      return this.transcription;
     } catch (error) {
-      console.error('Stop recording error:', error);
-      this.cleanupResources();
-      return this.transcription;
+      console.warn('Error resetting audio mode:', error);
     }
   }
-
-  // 提交音频缓冲区 - 简化为只包含type
-  commitAudioBuffer() {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-    
+  
+  // 转录单个音频块
+  async transcribeAudioChunk(fileUri) {
     try {
-      const commitMessage = {
-        type: "input_audio_buffer.commit"
-        // 不包含session参数
-      };
+      const fileInfo = await FileSystem.getInfoAsync(fileUri);
+      if (!fileInfo.exists || fileInfo.size === 0) {
+        return '';
+      }
       
-      debugLog('COMMIT_AUDIO', 'Committing audio buffer');
-      this.ws.send(JSON.stringify(commitMessage));
-    } catch (error) {
-      console.error('Error committing audio buffer:', error);
-    }
-  }
-
-  // 清除音频缓冲区 - 简化为只包含type
-  clearAudioBuffer() {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-    
-    try {
-      const clearMessage = {
-        type: "input_audio_buffer.clear"
-        // 不包含session参数
-      };
+      // 创建FormData用于上传
+      const formData = new FormData();
       
-      debugLog('CLEAR_AUDIO', 'Clearing audio buffer');
-      this.ws.send(JSON.stringify(clearMessage));
+      // 添加文件
+      formData.append('file', {
+        uri: fileUri,
+        type: 'audio/wav',
+        name: 'audio_chunk.wav'
+      });
+      
+      // 添加其他参数
+      formData.append('model', 'gpt-4o-transcribe');
+      formData.append('language', 'zh'); // 中文
+      
+      console.log(`Transcribing file: ${fileUri}`);
+      
+      // 发送请求到OpenAI API
+      const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${API_KEY}`,
+        },
+        body: formData
+      });
+      
+      // 检查响应
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`API错误 (${response.status}): ${errorText}`);
+      }
+      
+      // 解析JSON响应
+      const data = await response.json();
+      console.log(`Transcription result: ${data.text || ''}`);
+      return data.text || '';
+      
     } catch (error) {
-      console.error('Error clearing audio buffer:', error);
+      console.error('Transcribe chunk error:', error);
+      return '';
     }
   }
 } 
