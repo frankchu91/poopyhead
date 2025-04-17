@@ -374,6 +374,7 @@ export default class SpeechToTextService {
       // 添加其他参数
       formData.append('model', 'gpt-4o-transcribe');
       formData.append('language', 'zh'); // 中文
+      formData.append('prompt', 'Transcript the speech into text. If there is no speech, return an empty string.'); // 转录
       
       console.log(`Transcribing file: ${fileUri}`);
       
