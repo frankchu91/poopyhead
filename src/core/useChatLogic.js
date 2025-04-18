@@ -65,7 +65,8 @@ export default function useChatLogic() {
       id: Date.now().toString(),
       text: inputText,
       type: 'text',
-      timestamp: new Date()
+      timestamp: new Date(),
+      isUserTyped: true  // 添加标识，表示用户手动输入
     };
     
     setMessages(prev => [...prev, newMessage]);

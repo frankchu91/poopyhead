@@ -565,7 +565,7 @@ export default function MobileChatScreen({ navigation, route }) {
     );
   };
   
-  // 修改handleSendMessage，简化逻辑
+  // 修改handleSendMessage函数，为用户输入的消息添加标识
   const handleSendMessage = () => {
     sendTextMessage();
     setTimeout(() => scrollToBottom(false), 100);

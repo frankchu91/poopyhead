@@ -96,7 +96,12 @@ export default function MessageBubble({
     if (message.type === 'text') {
       return (
         <View>
-          <Text style={styles.messageText}>{message.text}</Text>
+          <Text style={[
+            styles.messageText,
+            message.isUserTyped && styles.userTypedText
+          ]}>
+            {message.text}
+          </Text>
           <Text style={styles.timestamp}>{formatTimestamp(message.timestamp, true)}</Text>
         </View>
       );
@@ -136,6 +141,7 @@ export default function MessageBubble({
       <TouchableOpacity
         style={[
           styles.container,
+          message.isUserTyped ? null : styles.voiceTranscribedContainer,
           isSelected && styles.selectedContainer
         ]}
         onLongPress={onLongPress}
@@ -160,6 +166,7 @@ export default function MessageBubble({
         >
           <View style={[
             styles.bubble,
+            message.isUserTyped ? styles.userTypedBubble : styles.voiceTranscribedBubble,
             isResizable ? { width: size.width } : null,
             isResizable && styles.resizableBubble,
             isScaling && styles.activePinching
@@ -203,8 +210,9 @@ const formatTimestamp = (timestamp, compact = false) => {
 const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
-    alignItems: 'center',
+    justifyContent: 'flex-end',
     marginVertical: 4,
+    width: '100%',
   },
   selectedContainer: {
     backgroundColor: 'rgba(10, 132, 255, 0.1)',
@@ -319,5 +327,24 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 10,
     fontWeight: 'bold',
+  },
+  userTypedContainer: {
+    justifyContent: 'flex-end',
+  },
+  voiceTranscribedContainer: {
+    justifyContent: 'flex-start',
+  },
+  userTypedBubble: {
+    backgroundColor: '#0A84FF',
+    alignSelf: 'flex-end',
+    marginRight: 8,
+  },
+  voiceTranscribedBubble: {
+    backgroundColor: '#1C1C1E',
+    alignSelf: 'flex-start',
+    marginLeft: 8,
+  },
+  userTypedText: {
+    color: '#FFFFFF',
   },
 }); 
