@@ -93,9 +93,16 @@ export default function MessageBubble({
 
   // 根据消息类型渲染不同内容
   const renderContent = () => {
+    if (message.type === 'text') {
+      return (
+        <View>
+          <Text style={styles.messageText}>{message.text}</Text>
+          <Text style={styles.timestamp}>{formatTimestamp(message.timestamp, true)}</Text>
+        </View>
+      );
+    }
+    
     switch (message.type) {
-      case 'text':
-        return <Text style={styles.messageText}>{message.text}</Text>;
       case 'image':
         return (
           <Image 
@@ -152,16 +159,12 @@ export default function MessageBubble({
           enabled={isResizable}
         >
           <View style={[
-            styles.bubble, 
-            { width: size.width },
+            styles.bubble,
+            isResizable ? { width: size.width } : null,
             isResizable && styles.resizableBubble,
             isScaling && styles.activePinching
           ]}>
             {renderContent()}
-            
-            <Text style={styles.timestamp}>
-              {formatTimestamp(message.timestamp, true)}
-            </Text>
             
             {/* 可视化的缩放提示 */}
             {isResizable && (
@@ -218,8 +221,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#1C1C1E',
     borderRadius: 16,
     padding: 8,
-    maxWidth: '80%',
+    minWidth: 80,
+    maxWidth: '95%',
     marginBottom: 2,
+    alignSelf: 'flex-start',
   },
   messageText: {
     color: '#fff',
