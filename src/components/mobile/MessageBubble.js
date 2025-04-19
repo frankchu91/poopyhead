@@ -136,59 +136,108 @@ export default function MessageBubble({
     }
   };
 
+  // 如果是用户消息或非文本消息，使用现有的气泡样式
+  if (message.isUserTyped || message.type !== 'text') {
+    return (
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <TouchableOpacity
+          style={[
+            styles.container,
+            message.isUserTyped ? null : styles.voiceTranscribedContainer,
+            isSelected && styles.selectedContainer
+          ]}
+          onLongPress={onLongPress}
+          onPress={onPress}
+          activeOpacity={0.8}
+          delayLongPress={200}
+        >
+          {isMultiSelectMode && (
+            <View style={styles.checkbox}>
+              {isSelected ? (
+                <Ionicons name="checkmark-circle" size={20} color="#0A84FF" />
+              ) : (
+                <Ionicons name="ellipse-outline" size={20} color="#8E8E93" />
+              )}
+            </View>
+          )}
+          
+          <PinchGestureHandler
+            onGestureEvent={onPinchGestureEvent}
+            onHandlerStateChange={onPinchHandlerStateChange}
+            enabled={isResizable}
+          >
+            <View style={[
+              styles.bubble,
+              message.isUserTyped ? styles.userTypedBubble : styles.voiceTranscribedBubble,
+              isResizable ? { width: size.width } : null,
+              isResizable && styles.resizableBubble,
+              isScaling && styles.activePinching
+            ]}>
+              {renderContent()}
+              
+              {/* 可视化的缩放提示 */}
+              {isResizable && (
+                <View style={styles.resizeIndicator}>
+                  <Ionicons name="resize-outline" size={18} color="#0A84FF" />
+                </View>
+              )}
+              
+              {message.isTranscribing && (
+                <View style={styles.transcribingIndicator}>
+                  <Text style={styles.transcribingText}>正在转录...</Text>
+                </View>
+              )}
+            </View>
+          </PinchGestureHandler>
+        </TouchableOpacity>
+      </GestureHandlerRootView>
+    );
+  }
+  
+  // 如果是转录消息，使用新的演讲者转录样式
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <TouchableOpacity
-        style={[
-          styles.container,
-          message.isUserTyped ? null : styles.voiceTranscribedContainer,
-          isSelected && styles.selectedContainer
-        ]}
-        onLongPress={onLongPress}
-        onPress={onPress}
-        activeOpacity={0.8}
-        delayLongPress={200}
-      >
-        {isMultiSelectMode && (
-          <View style={styles.checkbox}>
-            {isSelected ? (
-              <Ionicons name="checkmark-circle" size={20} color="#0A84FF" />
-            ) : (
-              <Ionicons name="ellipse-outline" size={20} color="#8E8E93" />
-            )}
+    <TouchableOpacity
+      style={[
+        styles.transcriptContainer,
+        isSelected && styles.selectedContainer
+      ]}
+      onLongPress={onLongPress}
+      onPress={onPress}
+      activeOpacity={0.8}
+      delayLongPress={200}
+    >
+      {isMultiSelectMode && (
+        <View style={styles.checkbox}>
+          {isSelected ? (
+            <Ionicons name="checkmark-circle" size={20} color="#0A84FF" />
+          ) : (
+            <Ionicons name="ellipse-outline" size={20} color="#8E8E93" />
+          )}
+        </View>
+      )}
+      
+      <View style={styles.transcriptContent}>
+        <View style={styles.speakerHeader}>
+          <View style={styles.speakerAvatar}>
+            <Text style={styles.speakerAvatarText}>A</Text>
+          </View>
+          
+          <Text style={styles.speakerName}>Speaker A</Text>
+          
+          <Text style={styles.transcriptTimestamp}>
+            {formatTimestamp(message.timestamp, true)}
+          </Text>
+        </View>
+        
+        <Text style={styles.transcriptText}>{message.text}</Text>
+        
+        {message.isTranscribing && (
+          <View style={styles.transcribingIndicator}>
+            <Text style={styles.transcribingText}>正在转录...</Text>
           </View>
         )}
-        
-        <PinchGestureHandler
-          onGestureEvent={onPinchGestureEvent}
-          onHandlerStateChange={onPinchHandlerStateChange}
-          enabled={isResizable}
-        >
-          <View style={[
-            styles.bubble,
-            message.isUserTyped ? styles.userTypedBubble : styles.voiceTranscribedBubble,
-            isResizable ? { width: size.width } : null,
-            isResizable && styles.resizableBubble,
-            isScaling && styles.activePinching
-          ]}>
-            {renderContent()}
-            
-            {/* 可视化的缩放提示 */}
-            {isResizable && (
-              <View style={styles.resizeIndicator}>
-                <Ionicons name="resize-outline" size={18} color="#0A84FF" />
-              </View>
-            )}
-            
-            {message.isTranscribing && (
-              <View style={styles.transcribingIndicator}>
-                <Text style={styles.transcribingText}>正在转录...</Text>
-              </View>
-            )}
-          </View>
-        </PinchGestureHandler>
-      </TouchableOpacity>
-    </GestureHandlerRootView>
+      </View>
+    </TouchableOpacity>
   );
 }
 
@@ -347,4 +396,48 @@ const styles = StyleSheet.create({
   userTypedText: {
     color: '#FFFFFF',
   },
+  transcriptContainer: {
+    marginVertical: 12,
+    marginHorizontal: 4,
+    width: '100%',
+  },
+  transcriptContent: {
+    backgroundColor: 'transparent',
+    padding: 12,
+    width: '95%',
+  },
+  speakerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  speakerAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#4a6c42',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 8,
+  },
+  speakerAvatarText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  speakerName: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 16,
+    marginRight: 8,
+  },
+  transcriptTimestamp: {
+    color: 'rgba(255, 255, 255, 0.6)',
+    fontSize: 12,
+  },
+  transcriptText: {
+    color: 'white',
+    fontSize: 14,
+    lineHeight: 22,
+  }
 }); 

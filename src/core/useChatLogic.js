@@ -47,6 +47,7 @@ export default function useChatLogic() {
   // Refs
   const timerRef = useRef(null);
   const soundRef = useRef(null);
+  const transcribingMessageIdRef = useRef(null);
   
   // 清理函数
   useEffect(() => {
@@ -341,6 +342,33 @@ export default function useChatLogic() {
     setIsMultiSelectMode(false);
   };
 
+  // 修改转录消息的创建方式
+  const transcriptionCompleted = (text) => {
+    const newMessage = {
+      id: transcribingMessageIdRef.current || Date.now().toString(),
+      text: text,
+      type: 'text',
+      timestamp: new Date(),
+      isUserTyped: false,
+      speaker: 'A',  // 添加说话者信息
+      isTranscribed: true  // 标记为转录消息
+    };
+    
+    // 更新消息
+    setMessages(prev => 
+      prev.map(msg => 
+        msg.id === transcribingMessageIdRef.current 
+          ? newMessage 
+          : msg
+      )
+    );
+    
+    // 清理状态
+    setIsTranscribing(false);
+    setTranscribingMessageId(null);
+    transcribingMessageIdRef.current = null;
+  };
+
   // 返回所有共享逻辑和状态
   return {
     // 状态
@@ -381,5 +409,6 @@ export default function useChatLogic() {
     setMessagePositions,
     setMessages,
     setMessageSizes,
+    transcriptionCompleted,
   };
 } 
