@@ -102,7 +102,10 @@ export default function MessageBubble({
           ]}>
             {message.text}
           </Text>
-          <Text style={styles.timestamp}>{formatTimestamp(message.timestamp, true)}</Text>
+          {/* 只在非用户消息中显示时间戳 */}
+          {!message.isUserTyped && (
+            <Text style={styles.timestamp}>{formatTimestamp(message.timestamp, true)}</Text>
+          )}
         </View>
       );
     }
