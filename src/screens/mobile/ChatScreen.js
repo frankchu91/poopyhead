@@ -535,12 +535,12 @@ export default function MobileChatScreen({ navigation, route }) {
           <Ionicons name="checkbox-outline" size={22} color="#fff" />
         </TouchableOpacity>
         
-        <TouchableOpacity 
+        {/* <TouchableOpacity 
           style={[styles.headerButton, freePositionMode && styles.activeHeaderButton]} 
           onPress={toggleFreeMode}
         >
           <Ionicons name="move" size={22} color="#fff" />
-        </TouchableOpacity>
+        </TouchableOpacity> */}
       </View>
     </View>
   );

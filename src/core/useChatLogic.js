@@ -11,18 +11,21 @@ export default function useChatLogic() {
       id: '1',
       text: '这是测试消息 1',
       type: 'text',
+      isUserTyped: true,
       timestamp: new Date()
     },
     {
       id: '2',
       text: '这是测试消息 2',
       type: 'text',
+      isUserTyped: true,
       timestamp: new Date()
     },
     {
       id: '3',
       text: '这是测试消息 3',
       type: 'text',
+      isUserTyped: true,
       timestamp: new Date()
     }
   ]);
