@@ -61,39 +61,26 @@ export default function useChatLogic() {
     };
   }, []);
 
-  // 共享业务逻辑方法
-  const sendTextMessage = () => {
-    if (inputText.trim() === '') return;
+  // 负责创建并添加用户消息到聊天记录中
+  const sendTextMessage = (text, isUserTyped = true) => {
+    if (!text || text.trim() === '') return;
     
     const newMessage = {
       id: Date.now().toString(),
-      text: inputText,
+      text: text,
       type: 'text',
       timestamp: new Date(),
-      isUserTyped: true  // 添加标识，表示用户手动输入
+      isUserTyped: isUserTyped,
+      // isUser: true  // 始终设置为 true 以确保一致性
     };
     
     setMessages(prev => [...prev, newMessage]);
     
-    // 如果已经有消息位置数据，为新消息设置一个合理的位置
-    if (Object.keys(messagePositions).length > 0) {
-      // 找到现有消息中 y 坐标最大的
-      let maxY = 0;
-      Object.values(messagePositions).forEach(pos => {
-        if (pos.y > maxY) maxY = pos.y;
-      });
-      
-      // 在最下方消息下方放置新消息
-      setMessagePositions(prev => ({
-        ...prev,
-        [newMessage.id]: {
-          x: 20,
-          y: maxY + 80
-        }
-      }));
+    if (isUserTyped) {
+      setInputText('');
     }
     
-    setInputText('');
+    return newMessage.id;
   };
 
   // 开始录音
@@ -342,31 +329,64 @@ export default function useChatLogic() {
     setIsMultiSelectMode(false);
   };
 
-  // 修改转录消息的创建方式
-  const transcriptionCompleted = (text) => {
-    const newMessage = {
-      id: transcribingMessageIdRef.current || Date.now().toString(),
-      text: text,
-      type: 'text',
-      timestamp: new Date(),
-      isUserTyped: false,
-      speaker: 'A',  // 添加说话者信息
-      isTranscribed: true  // 标记为转录消息
-    };
+  // 修改添加消息的逻辑
+  const addMessage = (message, isUser = false) => {
+    // 如果是用户消息，直接添加到消息列表
+    if (isUser) {
+      setMessages(prev => [...prev, { 
+        id: Date.now().toString(), 
+        text: message, 
+        isUser: true,
+        timestamp: new Date()
+      }]);
+      return;
+    }
     
-    // 更新消息
-    setMessages(prev => 
-      prev.map(msg => 
-        msg.id === transcribingMessageIdRef.current 
-          ? newMessage 
+    // 如果是转录消息
+    // 检查是否有正在进行的转录
+    const activeSpeakerMessage = messages.find(msg => 
+      msg.isSpeaker && msg.isActive && !msg.isComplete);
+      
+    if (activeSpeakerMessage && !hasUserMessageAfter(activeSpeakerMessage.id)) {
+      // 如果有活跃的转录消息且用户没有在之后发送过消息，则更新该消息
+      setMessages(prev => prev.map(msg => 
+        msg.id === activeSpeakerMessage.id 
+          ? { ...msg, text: message } 
           : msg
-      )
-    );
+      ));
+    } else {
+      // 否则创建新的转录消息
+      setMessages(prev => [...prev, { 
+        id: Date.now().toString(), 
+        text: message, 
+        isSpeaker: true,
+        speakerName: currentSpeaker,
+        isActive: true,
+        isComplete: false,
+        timestamp: new Date()
+      }]);
+    }
+  };
+
+  // 判断特定消息后是否有用户消息
+  const hasUserMessageAfter = (messageId) => {
+    const messageIndex = messages.findIndex(msg => msg.id === messageId);
+    if (messageIndex === -1) return false;
     
-    // 清理状态
-    setIsTranscribing(false);
-    setTranscribingMessageId(null);
-    transcribingMessageIdRef.current = null;
+    // 检查该消息后面是否有用户消息
+    for (let i = messageIndex + 1; i < messages.length; i++) {
+      if (messages[i].isUser) return true;
+    }
+    return false;
+  };
+
+  // 当转录结束时标记消息为完成
+  const completeTranscription = (messageId) => {
+    setMessages(prev => prev.map(msg => 
+      msg.id === messageId 
+        ? { ...msg, isActive: false, isComplete: true } 
+        : msg
+    ));
   };
 
   // 返回所有共享逻辑和状态
@@ -409,6 +429,8 @@ export default function useChatLogic() {
     setMessagePositions,
     setMessages,
     setMessageSizes,
-    transcriptionCompleted,
+    addMessage,
+    hasUserMessageAfter,
+    completeTranscription,
   };
 } 

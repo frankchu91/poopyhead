@@ -2,6 +2,7 @@ import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system';
 import { Platform } from 'react-native';
 import { OPENAI_API_KEY } from '../config/keys';
+import { chatLogic } from '../core/useChatLogic';
 
 // API密钥
 const API_KEY = OPENAI_API_KEY;
@@ -25,6 +26,7 @@ export default class SpeechToTextService {
     this.audioFiles = [];
     this.processingIndex = 0;
     this.isProcessing = false;
+    this.currentMessageId = null;  // 添加当前消息ID追踪
   }
 
   // 开始录音
@@ -221,7 +223,6 @@ export default class SpeechToTextService {
           
           // 每处理一个文件就更新一次UI，以显示增量更新
           if (newTranscriptions.length > 0 && typeof this.onTranscriptionUpdate === 'function') {
-            // 将新转录结果传递给回调，标记为增量更新
             console.log("发送增量转录更新:", transcription);
             
             const now = new Date();
@@ -229,12 +230,13 @@ export default class SpeechToTextService {
             const estimatedTranscribedDuration = this.processingIndex * 3;
             const progress = Math.min(1.0, estimatedTranscribedDuration / totalDuration);
             
-            // 增加一个参数指示这是增量更新
+            // 调用更新方法，传递当前转录文本和消息ID
             this.onTranscriptionUpdate(transcription.trim(), {
               totalDuration,
               transcribedDuration: estimatedTranscribedDuration,
               progress,
-              isIncremental: true // 标记为增量更新
+              isIncremental: true,
+              timestamp: new Date() // 添加当前时间戳
             });
           }
         }
@@ -440,6 +442,26 @@ export default class SpeechToTextService {
       }
     } catch (error) {
       console.error("取消录音时出错:", error);
+    }
+  }
+
+  // 修改转录更新逻辑 - 将其作为类的方法
+  updateTranscription(text, speakerName) {
+    // 获取当前活跃的消息ID
+    const activeSpeakerMessage = chatLogic.getActiveTranscriptionMessage();
+    
+    if (activeSpeakerMessage) {
+      // 检查这个活跃消息后面是否有用户消息
+      if (chatLogic.hasUserMessageAfter(activeSpeakerMessage.id)) {
+        // 如果有用户消息，创建新的转录消息
+        chatLogic.addMessage(text, false);
+      } else {
+        // 没有用户消息，更新现有转录
+        chatLogic.updateMessage(activeSpeakerMessage.id, text);
+      }
+    } else {
+      // 没有活跃消息，创建新的
+      chatLogic.addMessage(text, false);
     }
   }
 } 

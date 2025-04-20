@@ -192,6 +192,15 @@ export default function MessageBubble({
               )}
             </View>
           </PinchGestureHandler>
+          
+          {message.isSpeaker && (
+            <View style={styles.speakerContainer}>
+              <View style={styles.speakerAvatar}>
+                <Text style={styles.speakerInitial}>{message.speakerName?.charAt(0) || 'A'}</Text>
+              </View>
+              <Text style={styles.speakerName}>{message.speakerName || 'Speaker A'}</Text>
+            </View>
+          )}
         </TouchableOpacity>
       </GestureHandlerRootView>
     );
@@ -442,5 +451,16 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 14,
     lineHeight: 22,
-  }
+  },
+  speakerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  speakerInitial: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 16,
+    marginRight: 8,
+  },
 }); 
