@@ -225,7 +225,7 @@ export default function DocumentScreen({ navigation, route }) {
       {/* 底部输入区域 */}
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        keyboardVerticalOffset={0}
         style={styles.inputContainer}
       >
         <View style={styles.inputWrapper}>
@@ -324,6 +324,10 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#eee',
     backgroundColor: '#fff',
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
   },
   inputWrapper: {
     flexDirection: 'row',
