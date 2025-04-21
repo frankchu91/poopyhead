@@ -617,10 +617,10 @@ export default function MobileChatScreen({ navigation, route }) {
         // 检查后面是否有用户消息
         for (let i = messageIndex + 1; i < messages.length; i++) {
           console.log("检查消息:", i, messages[i].id, 
-            "isUser:", messages[i].isUser, 
+            // "isUser:", messages[i].isUser, 
             "isUserTyped:", messages[i].isUserTyped);
           
-          if (messages[i].isUser || messages[i].isUserTyped) {
+          if (messages[i].isUserTyped) {
             console.log("检测到用户消息，将创建新的转录");
             return true;
           }
@@ -1065,6 +1065,15 @@ export default function MobileChatScreen({ navigation, route }) {
       
       {/* 上下文菜单 */}
       {renderContextMenu()}
+
+      {/* 在现有聊天屏幕中添加一个按钮 */}
+      <TouchableOpacity
+        style={styles.newDocumentButton}
+        onPress={() => navigation.navigate('Document')}
+      >
+        <Ionicons name="document-text" size={22} color="#fff" />
+        <Text style={styles.newDocumentText}>新文档</Text>
+      </TouchableOpacity>
     </SafeAreaView>
   );
 }
@@ -1195,5 +1204,26 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#000',
     marginLeft: 10,
+  },
+  newDocumentButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0A84FF',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    position: 'absolute',
+    right: 16,
+    bottom: 80,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+  },
+  newDocumentText: {
+    color: '#fff',
+    fontWeight: '600',
+    marginLeft: 8,
   },
 });

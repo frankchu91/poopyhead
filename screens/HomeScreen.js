@@ -112,10 +112,10 @@ export default function HomeScreen({ navigation }) {
 
         <TouchableOpacity 
           style={styles.navItem} 
-          onPress={() => navigation.navigate('Chat')}
+          onPress={() => navigation.navigate('Document')}
         >
           <View style={styles.newButton}>
-            <Ionicons name="pencil" size={24} color="#fff" />
+            <Ionicons name="document-text" size={24} color="#fff" />
           </View>
         </TouchableOpacity>
 

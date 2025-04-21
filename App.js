@@ -11,6 +11,7 @@ import VoiceNoteScreen from './screens/VoiceNoteScreen';
 import UploadScreen from './screens/UploadScreen';
 import MobileChatScreen from './src/screens/mobile/ChatScreen';
 import WebChatScreen from './src/screens/web/ChatScreen';
+import DocumentScreen from './src/screens/mobile/DocumentScreen';
 
 const Stack = createStackNavigator();
 
@@ -78,6 +79,13 @@ function App() {
             <Stack.Screen 
               name="Chat" 
               component={ChatScreenComponent}
+              options={{
+                headerShown: false,
+              }}
+            />
+            <Stack.Screen 
+              name="Document" 
+              component={DocumentScreen}
               options={{
                 headerShown: false,
               }}
