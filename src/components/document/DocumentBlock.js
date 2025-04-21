@@ -42,58 +42,54 @@ export default function DocumentBlock({
     }
   };
   
-  // 如果是笔记，使用原来的渲染方式
+  // 如果是笔记，使用新的注释风格渲染
   if (block.type === 'note') {
     return (
       <View style={[
         styles.noteContainer,
-        active && styles.activeBlock
+        active && styles.activeNoteBlock
       ]}>
-        <View style={styles.blockHeader}>
-          <View style={styles.blockTypeContainer}>
-            <Text style={styles.blockTypeText}>笔记</Text>
-            {active && <View style={styles.activeDot} />}
-          </View>
+        <View style={styles.noteContentWrapper}>
+          <Text style={styles.noteContent}>{block.content}</Text>
           
-          <View style={styles.blockActions}>
+          {/* 编辑和删除按钮 - 放在右上角 */}
+          <View style={styles.noteActions}>
             <TouchableOpacity 
-              style={styles.blockAction}
+              style={styles.noteAction}
               onPress={() => setIsEditing(true)}
             >
-              <Ionicons name="pencil-outline" size={18} color="#999" />
+              <Ionicons name="pencil-outline" size={16} color="#999" />
             </TouchableOpacity>
             <TouchableOpacity 
-              style={styles.blockAction}
+              style={styles.noteAction}
               onPress={() => onDelete(block.id)}
             >
-              <Ionicons name="trash-outline" size={18} color="#999" />
+              <Ionicons name="trash-outline" size={16} color="#999" />
             </TouchableOpacity>
           </View>
-        </View>
-        
-        {isEditing ? (
-          <View style={styles.editingContainer}>
-            <TextInput
-              multiline
-              style={styles.editInput}
-              value={editText}
-              onChangeText={setEditText}
-              autoFocus
-            />
-            <View style={styles.editActions}>
-              <TouchableOpacity style={styles.editButton} onPress={handleCancel}>
-                <Ionicons name="close-outline" size={22} color="#666" />
-                <Text style={styles.editButtonText}>取消</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.editButton} onPress={handleSave}>
-                <Ionicons name="checkmark" size={22} color="#0A84FF" />
-                <Text style={[styles.editButtonText, { color: '#0A84FF' }]}>保存</Text>
-              </TouchableOpacity>
+          
+          {isEditing && (
+            <View style={styles.editingContainer}>
+              <TextInput
+                multiline
+                style={styles.editInput}
+                value={editText}
+                onChangeText={setEditText}
+                autoFocus
+              />
+              <View style={styles.editActions}>
+                <TouchableOpacity style={styles.editButton} onPress={handleCancel}>
+                  <Ionicons name="close-outline" size={22} color="#666" />
+                  <Text style={styles.editButtonText}>取消</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.editButton} onPress={handleSave}>
+                  <Ionicons name="checkmark" size={22} color="#0A84FF" />
+                  <Text style={[styles.editButtonText, { color: '#0A84FF' }]}>保存</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
-        ) : (
-          <Text style={styles.noteContent}>{block.content}</Text>
-        )}
+          )}
+        </View>
       </View>
     );
   }
@@ -203,6 +199,9 @@ const styles = StyleSheet.create({
     borderLeftColor: '#6c757d',
   },
   activeBlock: {
+    borderLeftColor: '#28a745',
+  },
+  activeNoteBlock: {
     borderLeftColor: '#28a745',
   },
   blockContent: {
@@ -320,25 +319,40 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   
+  // 新的笔记样式 - 设计成注释风格
   noteContainer: {
-    marginVertical: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    marginVertical: 4,
+    marginLeft: 24, // 缩进，表示从属关系
+    marginBottom: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderRadius: 8,
-    borderLeftWidth: 3,
-    backgroundColor: '#e8f4ff',
-    borderLeftColor: '#0A84FF',
+    borderLeftWidth: 2, // 更细的边框
+    backgroundColor: 'rgba(246, 250, 255, 0.7)', // 更轻的背景色
+    borderLeftColor: '#90CAF9', // 更淡的蓝色
+    maxWidth: '92%', // 宽度更窄，增强从属感
+  },
+  noteContentWrapper: {
+    position: 'relative',
   },
   noteContent: {
-    fontSize: 13,
-    lineHeight: 18,
-    color: '#333',
-    marginTop: 4,
+    fontSize: 13, // 字体更小
+    lineHeight: 17,
+    fontStyle: 'italic', // 斜体，区分于转录
+    color: '#444', // 字体颜色更深，增强可读性
+    paddingRight: 50, // 为右侧按钮预留空间
   },
-  blockHeader: {
+  noteActions: {
+    position: 'absolute', 
+    top: -4,
+    right: -4,
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
+    backgroundColor: 'rgba(245, 245, 245, 0.8)',
+    borderRadius: 8,
+    paddingHorizontal: 2,
+  },
+  noteAction: {
+    padding: 6,
+    marginLeft: 2,
   },
 }); 
