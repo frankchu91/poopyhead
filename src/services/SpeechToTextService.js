@@ -76,14 +76,15 @@ export default class SpeechToTextService {
       // 开始录音
       await this.recording.startAsync();
       
-      // 更新状态
+      // 完全重置所有状态
       this.isRecording = true;
-      this.transcription = "";
+      this.transcription = ""; // 确保转录内容被清空
       this.recordingStartTime = new Date();
       this.audioFiles = [];
       this.processingIndex = 0;
+      this.isProcessing = false;
       
-      console.log("Recording started");
+      console.log("录音已开始，所有转录状态已重置");
       
       // 设置每3秒保存一次录音
       this.recordingInterval = setInterval(async () => {
@@ -221,17 +222,24 @@ export default class SpeechToTextService {
           // 保存这个新的转录结果
           newTranscriptions.push(transcription);
           
+          // 添加到总转录文本
+          if (this.transcription) {
+            this.transcription += ' ' + transcription.trim();
+          } else {
+            this.transcription = transcription.trim();
+          }
+          
           // 每处理一个文件就更新一次UI，以显示增量更新
-          if (newTranscriptions.length > 0 && typeof this.onTranscriptionUpdate === 'function') {
-            console.log("发送增量转录更新:", transcription);
+          if (typeof this.onTranscriptionUpdate === 'function') {
+            console.log("发送累积转录更新:", this.transcription);
             
             const now = new Date();
             const totalDuration = (now - this.recordingStartTime) / 1000;
             const estimatedTranscribedDuration = this.processingIndex * 3;
             const progress = Math.min(1.0, estimatedTranscribedDuration / totalDuration);
             
-            // 调用更新方法，传递当前转录文本和消息ID
-            this.onTranscriptionUpdate(transcription.trim(), {
+            // 调用更新方法，传递累积的完整转录文本，而不只是当前段的转录
+            this.onTranscriptionUpdate(this.transcription, {
               totalDuration,
               transcribedDuration: estimatedTranscribedDuration,
               progress,
@@ -242,15 +250,6 @@ export default class SpeechToTextService {
         }
         
         this.processingIndex++;
-      }
-      
-      // 收集的转录文本加入总转录文本
-      if (newTranscriptions.length > 0) {
-        if (this.transcription) {
-          this.transcription += ' ' + newTranscriptions.join(' ');
-        } else {
-          this.transcription = newTranscriptions.join(' ');
-        }
       }
     } catch (error) {
       console.error('Error processing audio files:', error);
@@ -308,33 +307,27 @@ export default class SpeechToTextService {
     
     try {
       const pendingFiles = this.audioFiles.slice(this.processingIndex);
-      const allTranscriptions = [];
       
       for (const fileUri of pendingFiles) {
         const transcription = await this.transcribeAudioChunk(fileUri);
         if (transcription && transcription.trim()) {
-          allTranscriptions.push(transcription);
+          // 将新转录添加到总转录中
+          if (this.transcription) {
+            this.transcription += ' ' + transcription.trim();
+          } else {
+            this.transcription = transcription.trim();
+          }
         }
         this.processingIndex++;
       }
       
-      // 合并所有待处理文件的转录结果
-      if (allTranscriptions.length > 0) {
-        // 整合到当前转录
-        if (this.transcription) {
-          this.transcription += ' ' + allTranscriptions.join(' ');
-        } else {
-          this.transcription = allTranscriptions.join(' ');
-        }
-        
-        // 最后一次更新UI
-        if (this.onTranscriptionUpdate) {
-          this.onTranscriptionUpdate(this.transcription, {
-            totalDuration: (new Date() - this.recordingStartTime) / 1000,
-            transcribedDuration: this.audioFiles.length * 3,
-            progress: 1.0
-          });
-        }
+      // 最后一次更新UI
+      if (this.transcription && this.onTranscriptionUpdate) {
+        this.onTranscriptionUpdate(this.transcription, {
+          totalDuration: (new Date() - this.recordingStartTime) / 1000,
+          transcribedDuration: this.audioFiles.length * 3,
+          progress: 1.0
+        });
       }
     } catch (error) {
       console.error('Error processing remaining files:', error);
@@ -463,5 +456,12 @@ export default class SpeechToTextService {
       // 没有活跃消息，创建新的
       chatLogic.addMessage(text, false);
     }
+  }
+
+  // 重置转录内容而不停止录音
+  resetTranscription() {
+    console.log("重置转录内容");
+    this.transcription = "";
+    return true;
   }
 } 

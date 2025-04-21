@@ -73,6 +73,16 @@ export default function DocumentScreen({ navigation, route }) {
       } else {
         // 开始录音前先准备
         console.log("Starting recording...");
+        
+        // 获取是否需要创建新块的标志
+        const shouldCreateNew = document.blocks.some(block => block.type === 'note');
+        
+        // 如果之前添加过笔记，确保SpeechToTextService的转录状态被重置
+        if (shouldCreateNew && speechToTextRef.current) {
+          speechToTextRef.current.resetTranscription();
+          console.log("检测到之前有笔记，已重置转录状态");
+        }
+        
         const recordingStarted = await startRecording();
         
         if (recordingStarted) {
@@ -101,6 +111,11 @@ export default function DocumentScreen({ navigation, route }) {
     
     addNote(noteText);
     setNoteText('');
+    
+    // 重置语音转文字服务的状态，确保下次录音从空白开始
+    if (speechToTextRef.current) {
+      speechToTextRef.current.resetTranscription();
+    }
     
     // 滚动到底部
     setTimeout(() => {
