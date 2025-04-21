@@ -1,6 +1,11 @@
-import React, { useState } from 'react';
-import { View, Text, TextInput, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useState, useRef, useCallback } from 'react';
+import { View, Text, TextInput, StyleSheet, TouchableOpacity, Modal, Clipboard, UIManager, findNodeHandle, TouchableWithoutFeedback, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+
+// 启用布局动画测量 (仅适用于Android)
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 export default function DocumentBlock({ 
   block, 
@@ -10,6 +15,15 @@ export default function DocumentBlock({
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(block.content);
+  
+  // 文本选择相关状态
+  const [selectedText, setSelectedText] = useState('');
+  const [selectionVisible, setSelectionVisible] = useState(false);
+  const [selectionCoords, setSelectionCoords] = useState({ x: 0, y: 0, width: 0, height: 0 });
+  
+  // 文本输入引用
+  const textInputRef = useRef(null);
+  const textContainerRef = useRef(null);
   
   const handleSave = () => {
     if (editText.trim() !== block.content) {
@@ -28,6 +42,80 @@ export default function DocumentBlock({
     if (!timestamp) return '';
     const date = new Date(timestamp);
     return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+  };
+  
+  // 计算菜单位置
+  const measureTextPosition = useCallback((selection) => {
+    if (!textContainerRef.current) return;
+    
+    try {
+      const nodeHandle = findNodeHandle(textContainerRef.current);
+      
+      UIManager.measure(nodeHandle, (x, y, width, height, pageX, pageY) => {
+        // 计算选中文本的大致位置
+        const fontSize = 15; // 与样式中的字体大小一致
+        const lineHeight = 22; // 与样式中的行高一致
+        
+        // 假设选中文本在单行的情况, 计算相对位置
+        const selectedTextWidth = (selection.end - selection.start) * (fontSize * 0.6);
+        const selectionStartX = pageX + 16; // 加上padding
+        
+        // 设置菜单位置在文本上方
+        setSelectionCoords({
+          x: selectionStartX,
+          y: pageY - 40, // 菜单高度 + 一些间距
+          width: selectedTextWidth,
+          height: lineHeight
+        });
+      });
+    } catch (error) {
+      console.error('Measure error:', error);
+      // 使用备用位置
+      setSelectionCoords({
+        x: 50,
+        y: -40,
+        width: 100,
+        height: 22
+      });
+    }
+  }, []);
+  
+  // 处理文本选择变化
+  const handleSelectionChange = (event) => {
+    const { selection } = event.nativeEvent;
+    if (selection.start !== selection.end) {
+      // 有文本被选中
+      const selectedContent = block.content.substring(selection.start, selection.end);
+      setSelectedText(selectedContent);
+      
+      // 测量选中文本的位置
+      measureTextPosition(selection);
+      
+      setSelectionVisible(true);
+    } else {
+      // 没有选中文本
+      hideSelectionMenu();
+    }
+  };
+  
+  // 隐藏选择菜单
+  const hideSelectionMenu = () => {
+    setSelectionVisible(false);
+    setSelectedText('');
+  };
+  
+  // 复制选中的文本
+  const copySelectedText = () => {
+    if (selectedText) {
+      Clipboard.setString(selectedText);
+      hideSelectionMenu();
+    }
+  };
+  
+  // 对选中文本添加笔记 (占位功能)
+  const addNoteToSelection = () => {
+    // 这里是占位功能，暂不实现
+    hideSelectionMenu();
   };
   
   // 确定块类型样式
@@ -150,7 +238,59 @@ export default function DocumentBlock({
           </View>
         </View>
       ) : (
-        <Text style={styles.transcriptionContent}>{block.content}</Text>
+        <View ref={textContainerRef}>
+          {/* 可选择的转录内容 */}
+          <TextInput
+            ref={textInputRef}
+            style={styles.transcriptionContent}
+            value={block.content}
+            multiline
+            editable={false}
+            contextMenuHidden={true}
+            onSelectionChange={handleSelectionChange}
+            selectionColor={'rgba(10, 132, 255, 0.3)'}
+          />
+          
+          {/* 点击文本区域外部时隐藏菜单 */}
+          {selectionVisible && (
+            <Modal
+              transparent
+              visible={selectionVisible}
+              animationType="fade"
+              onRequestClose={hideSelectionMenu}
+            >
+              <TouchableWithoutFeedback onPress={hideSelectionMenu}>
+                <View style={styles.modalOverlay}>
+                  <View 
+                    style={[
+                      styles.selectionMenu,
+                      {
+                        left: selectionCoords.x,
+                        top: selectionCoords.y,
+                      }
+                    ]}
+                  >
+                    <TouchableOpacity 
+                      style={styles.selectionOption}
+                      onPress={copySelectedText}
+                    >
+                      <Text style={styles.selectionOptionText}>复制</Text>
+                    </TouchableOpacity>
+                    
+                    <View style={styles.selectionDivider} />
+                    
+                    <TouchableOpacity 
+                      style={styles.selectionOption}
+                      onPress={addNoteToSelection}
+                    >
+                      <Text style={styles.selectionOptionText}>Add notes</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </TouchableWithoutFeedback>
+            </Modal>
+          )}
+        </View>
       )}
       
       {active && (
@@ -259,6 +399,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderLeftWidth: 3,
     borderLeftColor: '#6c757d',
+    position: 'relative',
   },
   transcriptionHeader: {
     flexDirection: 'row',
@@ -303,6 +444,9 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     color: '#333',
     marginTop: 4,
+    backgroundColor: 'transparent',
+    padding: 0,
+    textAlignVertical: 'top',
   },
   activeIndicator: {
     position: 'absolute',
@@ -354,5 +498,36 @@ const styles = StyleSheet.create({
   noteAction: {
     padding: 6,
     marginLeft: 2,
+  },
+  
+  // 选择文本后的菜单和Modal样式
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
+  selectionMenu: {
+    position: 'absolute',
+    flexDirection: 'row',
+    backgroundColor: '#2C2C2E',
+    borderRadius: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 1.5,
+    elevation: 2,
+    zIndex: 1000,
+  },
+  selectionOption: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  selectionOptionText: {
+    color: 'white',
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  selectionDivider: {
+    width: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
   },
 }); 
