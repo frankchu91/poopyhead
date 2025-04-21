@@ -303,9 +303,11 @@ const styles = StyleSheet.create({
   },
   documentContent: {
     flex: 1,
+    backgroundColor: '#f5f5f7',
   },
   documentContentContainer: {
     padding: 16,
+    paddingBottom: 120,
   },
   emptyDocument: {
     flex: 1,

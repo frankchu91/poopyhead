@@ -56,7 +56,12 @@ export default function useDocumentLogic() {
       content,
       type, // 'transcription' 或 'note'
       createdAt: new Date(),
-      updatedAt: new Date()
+      updatedAt: new Date(),
+      // 为转录块添加说话者信息
+      ...(type === 'transcription' ? { 
+        speaker: 'A',
+        speakerName: 'Speaker A'
+      } : {})
     };
     
     setDocument(prev => ({
@@ -76,7 +81,16 @@ export default function useDocumentLogic() {
       ...prev,
       blocks: prev.blocks.map(block => 
         block.id === blockId 
-          ? { ...block, content, updatedAt: new Date() } 
+          ? { 
+              ...block, 
+              content, 
+              updatedAt: new Date(),
+              // 如果是转录块且没有说话者信息，添加默认值
+              ...(block.type === 'transcription' && !block.speaker ? {
+                speaker: 'A',
+                speakerName: 'Speaker A'
+              } : {})
+            } 
           : block
       ),
       metadata: {

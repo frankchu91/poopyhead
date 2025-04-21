@@ -22,6 +22,13 @@ export default function DocumentBlock({
     setEditText(block.content);
     setIsEditing(false);
   };
+
+  // 格式化时间
+  const formatTime = (timestamp) => {
+    if (!timestamp) return '';
+    const date = new Date(timestamp);
+    return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+  };
   
   // 确定块类型样式
   const getBlockStyle = () => {
@@ -35,20 +42,95 @@ export default function DocumentBlock({
     }
   };
   
+  // 如果是笔记，使用原来的渲染方式
+  if (block.type === 'note') {
+    return (
+      <View style={[
+        styles.noteContainer,
+        active && styles.activeBlock
+      ]}>
+        <View style={styles.blockHeader}>
+          <View style={styles.blockTypeContainer}>
+            <Text style={styles.blockTypeText}>笔记</Text>
+            {active && <View style={styles.activeDot} />}
+          </View>
+          
+          <View style={styles.blockActions}>
+            <TouchableOpacity 
+              style={styles.blockAction}
+              onPress={() => setIsEditing(true)}
+            >
+              <Ionicons name="pencil-outline" size={18} color="#999" />
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.blockAction}
+              onPress={() => onDelete(block.id)}
+            >
+              <Ionicons name="trash-outline" size={18} color="#999" />
+            </TouchableOpacity>
+          </View>
+        </View>
+        
+        {isEditing ? (
+          <View style={styles.editingContainer}>
+            <TextInput
+              multiline
+              style={styles.editInput}
+              value={editText}
+              onChangeText={setEditText}
+              autoFocus
+            />
+            <View style={styles.editActions}>
+              <TouchableOpacity style={styles.editButton} onPress={handleCancel}>
+                <Ionicons name="close-outline" size={22} color="#666" />
+                <Text style={styles.editButtonText}>取消</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.editButton} onPress={handleSave}>
+                <Ionicons name="checkmark" size={22} color="#0A84FF" />
+                <Text style={[styles.editButtonText, { color: '#0A84FF' }]}>保存</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : (
+          <Text style={styles.noteContent}>{block.content}</Text>
+        )}
+      </View>
+    );
+  }
+  
+  // 如果是转录块，使用新的对话风格
   return (
     <View style={[
-      styles.blockContainer, 
-      getBlockStyle(),
+      styles.transcriptionContainer,
       active && styles.activeBlock
     ]}>
-      {/* 显示块类型标签 */}
-      <View style={styles.blockTypeContainer}>
-        <Text style={styles.blockTypeText}>
-          {block.type === 'transcription' ? '转录' : '笔记'}
-        </Text>
-        {active && (
-          <View style={styles.activeDot} />
-        )}
+      <View style={styles.transcriptionHeader}>
+        {/* 说话者信息和时间戳 */}
+        <View style={styles.speakerHeader}>
+          <View style={styles.speakerCircle}>
+            <Text style={styles.speakerInitial}>A</Text>
+          </View>
+          <View style={styles.speakerInfo}>
+            <Text style={styles.speakerName}>Speaker A</Text>
+            <Text style={styles.timestamp}>{formatTime(block.createdAt)}</Text>
+          </View>
+        </View>
+        
+        {/* 编辑和删除按钮 */}
+        <View style={styles.blockActions}>
+          <TouchableOpacity 
+            style={styles.blockAction}
+            onPress={() => setIsEditing(true)}
+          >
+            <Ionicons name="pencil-outline" size={18} color="#999" />
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.blockAction}
+            onPress={() => onDelete(block.id)}
+          >
+            <Ionicons name="trash-outline" size={18} color="#999" />
+          </TouchableOpacity>
+        </View>
       </View>
       
       {isEditing ? (
@@ -72,23 +154,13 @@ export default function DocumentBlock({
           </View>
         </View>
       ) : (
-        <>
-          <Text style={styles.blockContent}>{block.content}</Text>
-          <View style={styles.blockActions}>
-            <TouchableOpacity 
-              style={styles.blockAction}
-              onPress={() => setIsEditing(true)}
-            >
-              <Ionicons name="pencil-outline" size={18} color="#999" />
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.blockAction}
-              onPress={() => onDelete(block.id)}
-            >
-              <Ionicons name="trash-outline" size={18} color="#999" />
-            </TouchableOpacity>
-          </View>
-        </>
+        <Text style={styles.transcriptionContent}>{block.content}</Text>
+      )}
+      
+      {active && (
+        <View style={styles.activeIndicator}>
+          <Text style={styles.activeText}>正在转录...</Text>
+        </View>
       )}
     </View>
   );
@@ -105,7 +177,6 @@ const styles = StyleSheet.create({
   blockTypeContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 4,
   },
   blockTypeText: {
     fontSize: 12,
@@ -126,7 +197,6 @@ const styles = StyleSheet.create({
   noteBlock: {
     backgroundColor: '#e7f5ff',
     borderLeftColor: '#0A84FF',
-    marginLeft: 20,
   },
   defaultBlock: {
     backgroundColor: '#f8f9fa',
@@ -142,16 +212,18 @@ const styles = StyleSheet.create({
   },
   blockActions: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
-    marginTop: 8,
-    opacity: 0.7,
+    marginLeft: 'auto',
+    backgroundColor: 'rgba(245, 245, 245, 0.8)',
+    borderRadius: 8,
+    paddingHorizontal: 2,
   },
   blockAction: {
-    padding: 6,
-    marginLeft: 8,
+    padding: 8,
+    marginLeft: 4,
   },
   editingContainer: {
     width: '100%',
+    marginTop: 8,
   },
   editInput: {
     fontSize: 16,
@@ -179,5 +251,94 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginLeft: 4,
     color: '#666',
+  },
+  
+  transcriptionContainer: {
+    marginVertical: 12,
+    padding: 16,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: '#6c757d',
+  },
+  transcriptionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  speakerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  speakerCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#4CAF50',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 8,
+  },
+  speakerInitial: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
+  speakerInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  speakerName: {
+    fontWeight: 'bold',
+    fontSize: 14,
+    color: '#333',
+    marginRight: 8,
+  },
+  timestamp: {
+    fontSize: 12,
+    color: '#888',
+  },
+  transcriptionContent: {
+    fontSize: 15,
+    lineHeight: 22,
+    color: '#333',
+    marginTop: 4,
+  },
+  activeIndicator: {
+    position: 'absolute',
+    bottom: -10,
+    right: 20,
+    backgroundColor: 'rgba(40, 167, 69, 0.8)',
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 12,
+  },
+  activeText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  
+  noteContainer: {
+    marginVertical: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderLeftWidth: 3,
+    backgroundColor: '#e8f4ff',
+    borderLeftColor: '#0A84FF',
+  },
+  noteContent: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#333',
+    marginTop: 4,
+  },
+  blockHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
   },
 }); 
