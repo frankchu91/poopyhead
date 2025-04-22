@@ -295,7 +295,7 @@ export default function useDocumentLogic() {
   
   // 添加笔记
   const addNote = (text) => {
-    if (!text || !text.trim()) return null;
+    if (!text && text !== '') return null;
     
     const noteId = addBlock(text.trim(), 'note');
     

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { View, Text, TextInput, StyleSheet, TouchableOpacity, Modal, Clipboard, UIManager, findNodeHandle, TouchableWithoutFeedback, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -11,19 +11,30 @@ export default function DocumentBlock({
   block, 
   onUpdate, 
   onDelete, 
-  active = false
+  onAddNote,
+  active = false,
+  autoFocus = false,
+  relatedNotes = [] // 添加关联笔记参数
 }) {
-  const [isEditing, setIsEditing] = useState(false);
+  const [isEditing, setIsEditing] = useState(autoFocus);
   const [editText, setEditText] = useState(block.content);
   
   // 文本选择相关状态
   const [selectedText, setSelectedText] = useState('');
   const [selectionVisible, setSelectionVisible] = useState(false);
   const [selectionCoords, setSelectionCoords] = useState({ x: 0, y: 0, width: 0, height: 0 });
+  const [selectionRange, setSelectionRange] = useState({ start: 0, end: 0 });
   
   // 文本输入引用
   const textInputRef = useRef(null);
   const textContainerRef = useRef(null);
+  
+  // 当autoFocus改变时，更新编辑状态
+  useEffect(() => {
+    if (autoFocus && !isEditing) {
+      setIsEditing(true);
+    }
+  }, [autoFocus]);
   
   const handleSave = () => {
     if (editText.trim() !== block.content) {
@@ -87,6 +98,7 @@ export default function DocumentBlock({
       // 有文本被选中
       const selectedContent = block.content.substring(selection.start, selection.end);
       setSelectedText(selectedContent);
+      setSelectionRange(selection);
       
       // 测量选中文本的位置
       measureTextPosition(selection);
@@ -112,10 +124,122 @@ export default function DocumentBlock({
     }
   };
   
-  // 对选中文本添加笔记 (占位功能)
+  // 对选中文本添加笔记
   const addNoteToSelection = () => {
-    // 这里是占位功能，暂不实现
-    hideSelectionMenu();
+    if (selectedText && typeof onAddNote === 'function') {
+      // 调用父组件传入的添加笔记函数
+      onAddNote(selectedText, block.id, selectionRange);
+      hideSelectionMenu();
+    }
+  };
+  
+  // 高亮文本渲染器
+  const renderHighlightedContent = () => {
+    // 如果是笔记块自己，不需要高亮
+    if (block.type !== 'transcription' || !block.content) {
+      return <Text style={styles.transcriptionContent}>{block.content}</Text>;
+    }
+    
+    // 处理高亮逻辑 - 查找被引用的文本并高亮显示
+    // 先检查当前块是否有引用自身的笔记
+    const notesReferencingThisBlock = relatedNotes.filter(note => 
+      note.referencedBlockId === block.id && note.referencedText
+    );
+    
+    // 如果没有引用，仍使用正常文本输入
+    if (notesReferencingThisBlock.length === 0) {
+      return (
+        <TextInput
+          ref={textInputRef}
+          style={styles.transcriptionContent}
+          value={block.content}
+          multiline
+          editable={false}
+          contextMenuHidden={true}
+          onSelectionChange={handleSelectionChange}
+          selectionColor={'rgba(10, 132, 255, 0.3)'}
+        />
+      );
+    }
+    
+    // 创建一个视图，使用Text组件渲染高亮部分和普通部分
+    return (
+      <View>
+        <Text style={styles.transcriptionContent}>
+          {block.content.split('').map((char, index) => {
+            // 检查此字符是否属于任何引用文本
+            const isHighlighted = notesReferencingThisBlock.some(note => {
+              const referenceText = note.referencedText;
+              if (!referenceText) return false;
+              
+              // 查找引用文本的所有出现位置，而不仅仅是第一次出现
+              let position = -1;
+              let tempIndex = -1;
+              
+              // 循环查找所有可能的位置
+              do {
+                tempIndex = block.content.indexOf(referenceText, tempIndex + 1);
+                if (tempIndex !== -1 && index >= tempIndex && index < tempIndex + referenceText.length) {
+                  position = tempIndex;
+                  break;
+                }
+              } while (tempIndex !== -1);
+              
+              // 如果找到包含当前字符的引用文本位置，则高亮
+              return position !== -1;
+            });
+            
+            // 根据是否需要高亮返回不同样式
+            return (
+              <Text 
+                key={index} 
+                style={isHighlighted ? styles.highlightedText : null}
+                onPress={() => {
+                  if (isHighlighted) {
+                    // 找到与高亮文本相关的笔记
+                    const relatedNote = notesReferencingThisBlock.find(note => {
+                      const referenceText = note.referencedText;
+                      if (!referenceText) return false;
+                      
+                      // 同样需要查找所有出现位置
+                      let position = -1;
+                      let tempIndex = -1;
+                      
+                      do {
+                        tempIndex = block.content.indexOf(referenceText, tempIndex + 1);
+                        if (tempIndex !== -1 && index >= tempIndex && index < tempIndex + referenceText.length) {
+                          position = tempIndex;
+                          break;
+                        }
+                      } while (tempIndex !== -1);
+                      
+                      return position !== -1;
+                    });
+                    
+                    // 如果找到相关笔记，可以在这里添加点击高亮文本时的操作
+                    // 例如：滚动到相关笔记位置
+                  }
+                }}
+              >
+                {char}
+              </Text>
+            );
+          })}
+        </Text>
+        
+        {/* 在下方添加一个不可见但可选择的文本输入组件，用于处理文本选择 */}
+        <TextInput
+          ref={textInputRef}
+          style={[styles.transcriptionContent, styles.hiddenInput]}
+          value={block.content}
+          multiline
+          editable={false}
+          contextMenuHidden={true}
+          onSelectionChange={handleSelectionChange}
+          selectionColor={'rgba(10, 132, 255, 0.3)'}
+        />
+      </View>
+    );
   };
   
   // 确定块类型样式
@@ -132,12 +256,23 @@ export default function DocumentBlock({
   
   // 如果是笔记，使用新的注释风格渲染
   if (block.type === 'note') {
+    // 为笔记块添加高亮的引用文本显示
+    const hasReference = block.referencedText && block.referencedText.length > 0;
+    
     return (
       <View style={[
         styles.noteContainer,
         active && styles.activeNoteBlock
       ]}>
         <View style={styles.noteContentWrapper}>
+          {/* 显示引用的文本 */}
+          {hasReference && (
+            <View style={styles.referencedTextContainer}>
+              <Text style={styles.referencedText}>"{block.referencedText}"</Text>
+            </View>
+          )}
+          
+          {/* 笔记内容 - 不显示"笔记"标签 */}
           <Text style={styles.noteContent}>{block.content}</Text>
           
           {/* 编辑和删除按钮 - 放在右上角 */}
@@ -164,6 +299,7 @@ export default function DocumentBlock({
                 value={editText}
                 onChangeText={setEditText}
                 autoFocus
+                placeholder="添加笔记..."
               />
               <View style={styles.editActions}>
                 <TouchableOpacity style={styles.editButton} onPress={handleCancel}>
@@ -239,17 +375,8 @@ export default function DocumentBlock({
         </View>
       ) : (
         <View ref={textContainerRef}>
-          {/* 可选择的转录内容 */}
-          <TextInput
-            ref={textInputRef}
-            style={styles.transcriptionContent}
-            value={block.content}
-            multiline
-            editable={false}
-            contextMenuHidden={true}
-            onSelectionChange={handleSelectionChange}
-            selectionColor={'rgba(10, 132, 255, 0.3)'}
-          />
+          {/* 可选择的转录内容 - 使用高亮渲染器 */}
+          {renderHighlightedContent()}
           
           {/* 点击文本区域外部时隐藏菜单 */}
           {selectionVisible && (
@@ -463,27 +590,53 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   
+  // 高亮文本样式
+  highlightedText: {
+    backgroundColor: 'rgba(255, 222, 121, 0.5)', // 加深一点黄色高亮背景
+    borderRadius: 3,
+    paddingHorizontal: 1,
+    textDecorationLine: 'underline', // 添加下划线，使高亮更明显
+    textDecorationColor: '#F2994A', // 更明显的橙色下划线
+    textDecorationStyle: 'solid', // 实线下划线
+    color: '#000', // 确保文本颜色足够深
+    fontWeight: '500', // 稍微加粗
+  },
+  hiddenInput: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    opacity: 0,
+    height: '100%',
+  },
+  
   // 新的笔记样式 - 设计成注释风格
   noteContainer: {
     marginVertical: 4,
-    marginLeft: 24, // 缩进，表示从属关系
-    marginBottom: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    marginLeft: 32, // 增加缩进，更明显的从属关系
+    marginBottom: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     borderRadius: 8,
-    borderLeftWidth: 2, // 更细的边框
-    backgroundColor: 'rgba(246, 250, 255, 0.7)', // 更轻的背景色
-    borderLeftColor: '#90CAF9', // 更淡的蓝色
-    maxWidth: '92%', // 宽度更窄，增强从属感
+    borderLeftWidth: 2, // 细边框
+    backgroundColor: 'rgba(240, 248, 255, 0.6)', // 更轻的背景色
+    borderLeftColor: '#90CAF9', // 保持蓝色以区分
+    maxWidth: '90%', // 更窄的宽度，增强从属感
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 1,
+    elevation: 1, // 轻微的阴影，增加层次感
   },
   noteContentWrapper: {
     position: 'relative',
   },
   noteContent: {
-    fontSize: 13, // 字体更小
-    lineHeight: 17,
+    fontSize: 14, // 适当的字体大小
+    lineHeight: 18,
     fontStyle: 'italic', // 斜体，区分于转录
-    color: '#444', // 字体颜色更深，增强可读性
+    color: '#555', // 字体颜色深一些，增强可读性
     paddingRight: 50, // 为右侧按钮预留空间
   },
   noteActions: {
@@ -529,5 +682,19 @@ const styles = StyleSheet.create({
   selectionDivider: {
     width: 1,
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  referencedTextContainer: {
+    marginBottom: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    backgroundColor: 'rgba(255, 242, 204, 0.4)', // 更轻的黄色背景
+    borderLeftWidth: 2,
+    borderLeftColor: '#FFCC80', // 柔和的橙色
+    borderRadius: 4,
+  },
+  referencedText: {
+    fontSize: 13,
+    fontStyle: 'italic',
+    color: '#666',
   },
 }); 

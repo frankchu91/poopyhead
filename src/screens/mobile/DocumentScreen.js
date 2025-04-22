@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -32,16 +32,36 @@ export default function DocumentScreen({ navigation, route }) {
     setCurrentTranscriptionSession,
     startRecording,
     stopRecording,
-    addNote
+    addNote,
+    exportDocument,
+    shareDocument,
+    isLoading
   } = useDocumentLogic();
   
   // 本地状态
   const [noteText, setNoteText] = useState('');
   const [isProcessingRecording, setIsProcessingRecording] = useState(false);
+  const [newNoteId, setNewNoteId] = useState(null);
+  const { documentId } = route.params || { documentId: 'test-doc-id' };
   
   // Refs
   const scrollViewRef = useRef(null);
   const speechToTextRef = useRef(null);
+  
+  // 当newNoteId变化时，清除它
+  useEffect(() => {
+    if (newNoteId) {
+      // 滚动到新创建的笔记块位置
+      scrollToBlock(newNoteId);
+      
+      // 1秒后清除新笔记ID，以便自动聚焦只在创建时生效
+      const timer = setTimeout(() => {
+        setNewNoteId(null);
+      }, 1000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [newNoteId]);
   
   // 初始化语音服务
   useEffect(() => {
@@ -55,6 +75,81 @@ export default function DocumentScreen({ navigation, route }) {
       }
     };
   }, []);
+  
+  // 滚动到指定块的位置
+  const scrollToBlock = (blockId) => {
+    if (!scrollViewRef.current) return;
+    
+    // 在下一帧执行滚动，确保DOM已更新
+    setTimeout(() => {
+      // 找到新创建笔记块的索引
+      const blockIndex = document.blocks.findIndex(block => block.id === blockId);
+      if (blockIndex === -1) return;
+      
+      // 计算大致的滚动位置 (每个块估计高度为120)
+      const estimatedBlockHeight = 120;
+      const scrollPosition = blockIndex * estimatedBlockHeight;
+      
+      // 执行滚动
+      scrollViewRef.current.scrollTo({ y: scrollPosition, animated: true });
+    }, 100);
+  };
+  
+  // 获取给定块ID的所有关联笔记
+  const getRelatedNotes = useCallback((blockId) => {
+    if (!document || !document.blocks) return [];
+    
+    // 找出所有引用了该块的笔记
+    return document.blocks.filter(block => 
+      block.type === 'note' && 
+      block.referencedBlockId === blockId
+    );
+  }, [document]);
+  
+  // 添加笔记到选择的文本
+  const handleAddNoteToSelection = useCallback((selectedText, blockId, selectionRange) => {
+    // 查找参考块
+    const referenceBlock = document.blocks.find(block => block.id === blockId);
+    if (!referenceBlock || referenceBlock.type !== 'transcription') return;
+    
+    // 计算参考块在数组中的位置
+    const refIndex = document.blocks.findIndex(block => block.id === blockId);
+    if (refIndex === -1) return;
+    
+    const { start, end } = selectionRange;
+    
+    // 创建新块数组
+    let updatedBlocks = [...document.blocks];
+    
+    // 创建笔记块 - 添加关联的文本内容和引用信息
+    const noteBlock = {
+      id: Date.now().toString() + '_note',
+      content: '',
+      type: 'note',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      referencedText: selectedText,           // 添加关联的文本
+      referencedBlockId: referenceBlock.id    // 添加关联的块ID
+    };
+    
+    // 在转录块后插入笔记
+    updatedBlocks.splice(refIndex + 1, 0, noteBlock);
+    
+    // 更新文档
+    document.blocks = updatedBlocks;
+    
+    // 设置新笔记ID以自动聚焦
+    setNewNoteId(noteBlock.id);
+    
+    return noteBlock.id;
+  }, [document, setNewNoteId]);
+  
+  // 滚动到底部函数
+  const scrollToBottom = (animated = true) => {
+    if (scrollViewRef.current) {
+      scrollViewRef.current.scrollToEnd({ animated });
+    }
+  };
   
   // 处理录音
   const toggleRecording = async () => {
@@ -119,9 +214,7 @@ export default function DocumentScreen({ navigation, route }) {
     
     // 滚动到底部
     setTimeout(() => {
-      if (scrollViewRef.current) {
-        scrollViewRef.current.scrollToEnd({ animated: true });
-      }
+      scrollToBottom();
     }, 100);
   };
   
@@ -203,7 +296,10 @@ export default function DocumentScreen({ navigation, route }) {
                 block={block}
                 onUpdate={updateBlock}
                 onDelete={handleDeleteBlock}
+                onAddNote={handleAddNoteToSelection}
                 active={currentTranscriptionSession.blockId === block.id}
+                autoFocus={block.id === newNoteId}
+                relatedNotes={getRelatedNotes(block.id)}
               />
             ))}
           </>
