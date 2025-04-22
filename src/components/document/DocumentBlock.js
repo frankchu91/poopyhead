@@ -25,6 +25,12 @@ export default function DocumentBlock({
   const [selectionVisible, setSelectionVisible] = useState(false);
   const [selectionCoords, setSelectionCoords] = useState({ x: 0, y: 0, width: 0, height: 0 });
   const [selectionRange, setSelectionRange] = useState({ start: 0, end: 0 });
+  // 触摸和拖动相关状态
+  const [isDraggingStart, setIsDraggingStart] = useState(false);
+  const [isDraggingEnd, setIsDraggingEnd] = useState(false);
+  const [touchStartX, setTouchStartX] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const [lastTouch, setLastTouch] = useState({ x: 0, y: 0 });
   
   // 添加新的状态变量，用于垂直三点菜单
   const [menuVisible, setMenuVisible] = useState(false);
@@ -90,17 +96,40 @@ export default function DocumentBlock({
         // 计算选中文本的大致位置
         const fontSize = 15; // 与样式中的字体大小一致
         const lineHeight = 22; // 与样式中的行高一致
+        const charWidth = fontSize * 0.6; // 估算的字符宽度
         
-        // 假设选中文本在单行的情况, 计算相对位置
-        const selectedTextWidth = (selection.end - selection.start) * (fontSize * 0.6);
-        const selectionStartX = pageX + 16; // 加上padding
+        // 获取文本内容和选区
+        const content = block.content || '';
+        const selStart = selection.start || 0;
+        const selEnd = selection.end || 0;
         
-        // 设置菜单位置在文本上方
+        // 计算选中文本的大致长度
+        const selectedTextWidth = (selEnd - selStart) * charWidth;
+        
+        // 找到选中文本的起始位置 (加上左边距)
+        const selectionStartX = pageX + 16 + (selStart * charWidth);
+        
+        // 估计选中文本的垂直位置
+        // 假设每行大约能容纳的字符数
+        const charsPerLine = Math.floor((width - 32) / charWidth);
+        
+        // 如果charsPerLine为0，设置一个默认值避免除以零错误
+        const actualCharsPerLine = charsPerLine > 0 ? charsPerLine : 50;
+        
+        // 估计选中文本开始位置所在的行数
+        const startLineNumber = Math.floor(selStart / actualCharsPerLine);
+        
+        // 基于行数计算垂直位置
+        const selectionY = pageY + (startLineNumber * lineHeight);
+        
+        // 设置选区坐标
         setSelectionCoords({
           x: selectionStartX,
-          y: pageY - 40, // 菜单高度 + 一些间距
+          y: selectionY,
           width: selectedTextWidth,
-          height: lineHeight
+          height: lineHeight,
+          startOffset: selStart,
+          endOffset: selEnd
         });
       });
     } catch (error) {
@@ -108,12 +137,14 @@ export default function DocumentBlock({
       // 使用备用位置
       setSelectionCoords({
         x: 50,
-        y: -40,
+        y: 40,
         width: 100,
-        height: 22
+        height: 22,
+        startOffset: selection.start,
+        endOffset: selection.end
       });
     }
-  }, []);
+  }, [block.content]);
   
   // 处理文本选择变化
   const handleSelectionChange = (event) => {
@@ -134,10 +165,145 @@ export default function DocumentBlock({
     }
   };
   
+  // 计算选择手柄位置
+  const getHandlePosition = (isStart = true) => {
+    const baseX = selectionCoords.x || 0;
+    const baseY = selectionCoords.y || 0;
+    const width = selectionCoords.width || 0;
+    const height = selectionCoords.height || 0;
+    
+    if (isStart) {
+      return {
+        x: baseX - 8, // 向左偏移，更适合触摸
+        y: baseY + height // 底部
+      };
+    } else {
+      // 结束位置在选区右侧
+      return {
+        x: baseX + width - 8, // 向左偏移一点以居中
+        y: baseY + height // 底部
+      };
+    }
+  };
+  
+  // 手柄拖动开始
+  const handleHandleDragStart = (isStart, event) => {
+    if (isStart) {
+      setIsDraggingStart(true);
+    } else {
+      setIsDraggingEnd(true);
+    }
+    
+    setIsDragging(true);
+    
+    // 保存触摸起始位置
+    const touch = event.nativeEvent.touches[0] || event.nativeEvent;
+    setTouchStartX(touch.pageX);
+    setLastTouch({ x: touch.pageX, y: touch.pageY });
+  };
+  
+  // 全局拖动处理
+  const handleTouchMove = (event) => {
+    if (!isDragging) return;
+    
+    const touch = event.nativeEvent.touches[0] || event.nativeEvent;
+    const { pageX, pageY } = touch;
+    
+    // 计算移动距离
+    const deltaX = pageX - lastTouch.x;
+    setLastTouch({ x: pageX, y: pageY });
+    
+    // 基于当前字体大小估算字符宽度
+    const fontSize = 15;
+    const avgCharWidth = fontSize * 0.6;
+    
+    // 敏感度调整 - 平滑拖动体验
+    const sensitivity = 1.2; // 增加灵敏度使拖动更流畅
+    const charDelta = Math.round((deltaX * sensitivity) / avgCharWidth);
+    
+    if (charDelta === 0) return;
+    
+    // 更新选择范围
+    try {
+      if (isDraggingStart) {
+        // 调整起始位置，但不能超过终点位置减1
+        const newStart = Math.max(0, Math.min(selectionRange.start + charDelta, selectionRange.end - 1));
+        
+        if (newStart !== selectionRange.start) {
+          updateSelectionRange({
+            start: newStart,
+            end: selectionRange.end
+          });
+        }
+      } else if (isDraggingEnd) {
+        // 调整终点位置，但不能小于起点位置加1
+        const newEnd = Math.max(selectionRange.start + 1, Math.min(selectionRange.end + charDelta, block.content.length));
+        
+        if (newEnd !== selectionRange.end) {
+          updateSelectionRange({
+            start: selectionRange.start, 
+            end: newEnd
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Selection update error:', error);
+    }
+  };
+  
+  // 更新选择范围
+  const updateSelectionRange = (newRange) => {
+    try {
+      if (!block.content) return;
+      
+      // 确保范围有效
+      const validRange = {
+        start: Math.max(0, Math.min(newRange.start, block.content.length)),
+        end: Math.max(0, Math.min(newRange.end, block.content.length))
+      };
+      
+      // 确保开始位置小于结束位置
+      if (validRange.start >= validRange.end) {
+        if (isDraggingStart) {
+          validRange.start = validRange.end - 1;
+        } else {
+          validRange.end = validRange.start + 1;
+        }
+      }
+      
+      // 更新选中文本和范围
+      const newText = block.content.substring(validRange.start, validRange.end);
+      setSelectedText(newText);
+      setSelectionRange(validRange);
+      
+      // 重新测量位置
+      measureTextPosition(validRange);
+      
+      // 尝试更新文本输入组件的选择范围 (原生选择)
+      if (textInputRef.current) {
+        textInputRef.current.setNativeProps({
+          selection: validRange
+        });
+      }
+    } catch (error) {
+      console.error('Range update error:', error);
+    }
+  };
+  
+  // 手柄拖动结束
+  const handleDragEnd = () => {
+    setIsDraggingStart(false);
+    setIsDraggingEnd(false);
+    setIsDragging(false);
+  };
+  
   // 隐藏选择菜单
   const hideSelectionMenu = () => {
     setSelectionVisible(false);
     setSelectedText('');
+    setIsDragging(false);
+    setIsDraggingStart(false);
+    setIsDraggingEnd(false);
   };
   
   // 复制选中的文本
@@ -170,19 +336,31 @@ export default function DocumentBlock({
       note.referencedBlockId === block.id && note.referencedText
     );
     
-    // 如果没有引用，仍使用正常文本输入
+    // 如果没有引用，使用增强的文本选择组件
     if (notesReferencingThisBlock.length === 0) {
       return (
-        <TextInput
-          ref={textInputRef}
-          style={styles.transcriptionContent}
-          value={block.content}
-          multiline
-          editable={false}
-          contextMenuHidden={true}
-          onSelectionChange={handleSelectionChange}
-          selectionColor={'rgba(10, 132, 255, 0.3)'}
-        />
+        <View style={styles.textContainer}>
+          <TextInput
+            ref={textInputRef}
+            style={styles.transcriptionContent}
+            value={block.content}
+            multiline
+            editable={false}
+            contextMenuHidden={true}
+            onSelectionChange={handleSelectionChange}
+            selectionColor={'rgba(10, 132, 255, 0.3)'}
+          />
+          
+          {/* 添加全局触摸移动事件捕获层 */}
+          {isDragging && (
+            <TouchableWithoutFeedback
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleDragEnd}
+            >
+              <View style={styles.touchCaptureLayer} />
+            </TouchableWithoutFeedback>
+          )}
+        </View>
       );
     }
     
@@ -506,43 +684,91 @@ export default function DocumentBlock({
           </View>
         </View>
       ) : (
-        <View ref={textContainerRef}>
+        <View ref={textContainerRef} style={styles.contentContainer}>
           {/* 可选择的转录内容 - 使用高亮渲染器 */}
           {renderHighlightedContent()}
           
-          {/* 文本选择菜单 */}
+          {/* 选择工具栏和手柄 */}
           {selectionVisible && selectedText.length > 0 && (
+            <View style={styles.selectionHandlesContainer}>
+              {/* 选择工具栏 - 使用固定位置显示 */}
+              <View 
+                style={styles.selectionToolbar}
+                pointerEvents="box-none"
+              >
+                <TouchableOpacity 
+                  style={styles.toolbarButton}
+                  onPress={copySelectedText}
+                >
+                  <Text style={styles.toolbarButtonText}>复制</Text>
+                </TouchableOpacity>
+                
+                <View style={styles.toolbarDivider} />
+                
+                <TouchableOpacity 
+                  style={styles.toolbarButton}
+                  onPress={addNoteToSelection}
+                >
+                  <Text style={styles.toolbarButtonText}>添加笔记</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+          
+          {/* 操作菜单 Modal - 保留原有的 */}
+          {menuVisible && (
             <Modal
               transparent
-              visible={selectionVisible && selectedText.length > 0}
+              visible={menuVisible}
               animationType="fade"
-              onRequestClose={hideSelectionMenu}
+              onRequestClose={() => setMenuVisible(false)}
             >
-              <TouchableWithoutFeedback onPress={hideSelectionMenu}>
+              <TouchableWithoutFeedback onPress={() => setMenuVisible(false)}>
                 <View style={styles.modalOverlay}>
                   <View 
                     style={[
-                      styles.selectionMenu,
+                      styles.actionMenu,
                       {
-                        left: selectionCoords.x,
-                        top: selectionCoords.y,
+                        left: menuPosition.x - 110, // 调整菜单位置，向左偏移确保在按钮附近
+                        top: menuPosition.y + 10,  // 调整菜单位置，在按钮正下方
                       }
                     ]}
                   >
                     <TouchableOpacity 
-                      style={styles.selectionOption}
-                      onPress={copySelectedText}
+                      style={styles.actionOption}
+                      onPress={() => {
+                        setMenuVisible(false);
+                        setIsEditing(true);
+                      }}
                     >
-                      <Text style={styles.selectionOptionText}>复制</Text>
+                      <Ionicons name="pencil-outline" size={16} color="#666" />
+                      <Text style={styles.actionOptionText}>编辑</Text>
                     </TouchableOpacity>
                     
-                    <View style={styles.selectionDivider} />
+                    <View style={styles.actionDivider} />
                     
                     <TouchableOpacity 
-                      style={styles.selectionOption}
-                      onPress={addNoteToSelection}
+                      style={styles.actionOption}
+                      onPress={() => {
+                        setMenuVisible(false);
+                        onDelete(block.id);
+                      }}
                     >
-                      <Text style={styles.selectionOptionText}>Add notes</Text>
+                      <Ionicons name="trash-outline" size={16} color="#FF453A" />
+                      <Text style={[styles.actionOptionText, {color: '#FF453A'}]}>删除</Text>
+                    </TouchableOpacity>
+                    
+                    <View style={styles.actionDivider} />
+                    
+                    <TouchableOpacity 
+                      style={styles.actionOption}
+                      onPress={() => {
+                        setMenuVisible(false);
+                        onAddEmptyNote && onAddEmptyNote(block.id);
+                      }}
+                    >
+                      <Ionicons name="add-circle-outline" size={16} color="#4CAF50" />
+                      <Text style={[styles.actionOptionText, {color: '#4CAF50'}]}>添加笔记</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -916,5 +1142,132 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: '#eee',
     marginHorizontal: 0,
+  },
+  
+  // 添加自定义选择手柄样式
+  selectionHandlesContainer: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    right: 0,
+    bottom: 0,
+    pointerEvents: 'box-none',
+  },
+  selectionHandle: {
+    position: 'absolute',
+    width: 30,  // 增大触摸区域
+    height: 30, // 增大触摸区域
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1001,
+  },
+  handleKnob: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#0A84FF',
+    borderWidth: 1,
+    borderColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.3,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  
+  contentContainer: {
+    position: 'relative',
+    width: '100%',
+  },
+  
+  textContainer: {
+    position: 'relative',
+  },
+  
+  touchCaptureLayer: {
+    position: 'absolute',
+    top: -100,
+    left: -100,
+    right: -100,
+    bottom: -100,
+    backgroundColor: 'transparent',
+    zIndex: 999,
+  },
+  
+  // 改进的选择工具栏和手柄样式
+  selectionToolbar: {
+    position: 'absolute',
+    flexDirection: 'row',
+    backgroundColor: 'rgba(0, 0, 0, 0.75)', // 半透明背景，减轻视觉压力
+    borderRadius: 8, // 更小的圆角
+    paddingVertical: 6, // 减小垂直内边距
+    paddingHorizontal: 4, // 减小水平内边距
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 }, // 减小阴影偏移
+    shadowOpacity: 0.3, // 降低阴影不透明度
+    shadowRadius: 4, // 减小阴影半径
+    elevation: 5, // 降低Android阴影高度
+    zIndex: 1002,
+    borderWidth: 0.5, // 更细的边框
+    borderColor: 'rgba(255, 255, 255, 0.2)', // 更淡的边框
+    justifyContent: 'center',
+    alignItems: 'center',
+    bottom: 20, // 保持工具栏在底部的固定位置
+    left: 50, // 增大左边距，使其更居中
+    right: 50, // 增大右边距，使其更居中
+  },
+  
+  toolbarButton: {
+    paddingHorizontal: 12, // 减小按钮的水平内边距
+    paddingVertical: 6, // 减小按钮的垂直内边距
+    borderRadius: 4, // 更小的圆角
+    minWidth: 60, // 减小最小宽度
+    alignItems: 'center',
+  },
+  
+  toolbarButtonText: {
+    color: 'white',
+    fontSize: 14, // 减小字体大小
+    fontWeight: '500', // 减小字体粗细
+    textAlign: 'center',
+  },
+  
+  toolbarDivider: {
+    width: 0.5, // 更细的分隔线
+    height: '80%', // 不占满整个高度
+    backgroundColor: 'rgba(255, 255, 255, 0.2)', // 更淡的分隔线颜色
+    marginVertical: 4, // 添加垂直边距
+  },
+  
+  selectionHandleContainer: {
+    position: 'absolute',
+    width: 44,  // 大大增加触摸区域
+    height: 44, // 大大增加触摸区域
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1001,
+  },
+  
+  selectionHandle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'transparent',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  
+  handleKnob: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#0A84FF',
+    borderWidth: 2,
+    borderColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.5,
+    shadowRadius: 3,
+    elevation: 5,
   },
 }); 
