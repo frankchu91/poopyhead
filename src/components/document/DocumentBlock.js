@@ -14,7 +14,8 @@ export default function DocumentBlock({
   onAddNote,
   active = false,
   autoFocus = false,
-  relatedNotes = [] // 添加关联笔记参数
+  relatedNotes = [], // 添加关联笔记参数
+  onAddEmptyNote // 新增：添加空白笔记的回调函数
 }) {
   const [isEditing, setIsEditing] = useState(autoFocus);
   const [editText, setEditText] = useState(block.content);
@@ -25,9 +26,16 @@ export default function DocumentBlock({
   const [selectionCoords, setSelectionCoords] = useState({ x: 0, y: 0, width: 0, height: 0 });
   const [selectionRange, setSelectionRange] = useState({ start: 0, end: 0 });
   
+  // 添加新的状态变量，用于垂直三点菜单
+  const [menuVisible, setMenuVisible] = useState(false);
+  // 添加菜单位置状态
+  const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
+  
   // 文本输入引用
   const textInputRef = useRef(null);
   const textContainerRef = useRef(null);
+  // 添加菜单按钮引用
+  const menuButtonRef = useRef(null);
   
   // 当autoFocus改变时，更新编辑状态
   useEffect(() => {
@@ -53,6 +61,22 @@ export default function DocumentBlock({
     if (!timestamp) return '';
     const date = new Date(timestamp);
     return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+  };
+  
+  // 测量菜单按钮位置并显示菜单
+  const showMenu = () => {
+    if (!menuButtonRef.current) return;
+    
+    const nodeHandle = findNodeHandle(menuButtonRef.current);
+    
+    UIManager.measure(nodeHandle, (x, y, width, height, pageX, pageY) => {
+      // 菜单位置设置在按钮右侧
+      setMenuPosition({
+        x: pageX,
+        y: pageY + height
+      });
+      setMenuVisible(true);
+    });
   };
   
   // 计算菜单位置
@@ -265,6 +289,15 @@ export default function DocumentBlock({
         active && styles.activeNoteBlock
       ]}>
         <View style={styles.noteContentWrapper}>
+          {/* 垂直三点菜单按钮 - 移到最顶部定义 */}
+          <TouchableOpacity 
+            ref={menuButtonRef}
+            style={styles.menuButton}
+            onPress={showMenu}
+          >
+            <Ionicons name="ellipsis-vertical" size={16} color="#666" />
+          </TouchableOpacity>
+          
           {/* 显示引用的文本 */}
           {hasReference && (
             <View style={styles.referencedTextContainer}>
@@ -275,21 +308,66 @@ export default function DocumentBlock({
           {/* 笔记内容 - 不显示"笔记"标签 */}
           <Text style={styles.noteContent}>{block.content}</Text>
           
-          {/* 编辑和删除按钮 - 放在右上角 */}
-          <View style={styles.noteActions}>
-            <TouchableOpacity 
-              style={styles.noteAction}
-              onPress={() => setIsEditing(true)}
+          {/* 操作菜单 */}
+          {menuVisible && (
+            <Modal
+              transparent
+              visible={menuVisible}
+              animationType="fade"
+              onRequestClose={() => setMenuVisible(false)}
             >
-              <Ionicons name="pencil-outline" size={16} color="#999" />
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.noteAction}
-              onPress={() => onDelete(block.id)}
-            >
-              <Ionicons name="trash-outline" size={16} color="#999" />
-            </TouchableOpacity>
-          </View>
+              <TouchableWithoutFeedback onPress={() => setMenuVisible(false)}>
+                <View style={styles.modalOverlay}>
+                  <View 
+                    style={[
+                      styles.actionMenu,
+                      {
+                        left: menuPosition.x - 110, // 调整菜单位置，向左偏移确保在按钮附近
+                        top: menuPosition.y + 10,  // 调整菜单位置，在按钮正下方
+                      }
+                    ]}
+                  >
+                    <TouchableOpacity 
+                      style={styles.actionOption}
+                      onPress={() => {
+                        setMenuVisible(false);
+                        setIsEditing(true);
+                      }}
+                    >
+                      <Ionicons name="pencil-outline" size={16} color="#666" />
+                      <Text style={styles.actionOptionText}>编辑</Text>
+                    </TouchableOpacity>
+                    
+                    <View style={styles.actionDivider} />
+                    
+                    <TouchableOpacity 
+                      style={styles.actionOption}
+                      onPress={() => {
+                        setMenuVisible(false);
+                        onDelete(block.id);
+                      }}
+                    >
+                      <Ionicons name="trash-outline" size={16} color="#FF453A" />
+                      <Text style={[styles.actionOptionText, {color: '#FF453A'}]}>删除</Text>
+                    </TouchableOpacity>
+                    
+                    <View style={styles.actionDivider} />
+                    
+                    <TouchableOpacity 
+                      style={styles.actionOption}
+                      onPress={() => {
+                        setMenuVisible(false);
+                        onAddEmptyNote && onAddEmptyNote(block.id);
+                      }}
+                    >
+                      <Ionicons name="add-circle-outline" size={16} color="#4CAF50" />
+                      <Text style={[styles.actionOptionText, {color: '#4CAF50'}]}>添加笔记</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </TouchableWithoutFeedback>
+            </Modal>
+          )}
           
           {isEditing && (
             <View style={styles.editingContainer}>
@@ -325,6 +403,15 @@ export default function DocumentBlock({
       active && styles.activeBlock
     ]}>
       <View style={styles.transcriptionHeader}>
+        {/* 垂直三点菜单按钮 - 移到最右侧 */}
+        <TouchableOpacity 
+          ref={menuButtonRef}
+          style={[styles.menuButton, styles.transcriptionMenuButton]}
+          onPress={showMenu}
+        >
+          <Ionicons name="ellipsis-vertical" size={16} color="#666" />
+        </TouchableOpacity>
+        
         {/* 说话者信息和时间戳 */}
         <View style={styles.speakerHeader}>
           <View style={styles.speakerCircle}>
@@ -336,21 +423,66 @@ export default function DocumentBlock({
           </View>
         </View>
         
-        {/* 编辑和删除按钮 */}
-        <View style={styles.blockActions}>
-          <TouchableOpacity 
-            style={styles.blockAction}
-            onPress={() => setIsEditing(true)}
+        {/* 操作菜单 - 转录块 */}
+        {menuVisible && (
+          <Modal
+            transparent
+            visible={menuVisible}
+            animationType="fade"
+            onRequestClose={() => setMenuVisible(false)}
           >
-            <Ionicons name="pencil-outline" size={18} color="#999" />
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={styles.blockAction}
-            onPress={() => onDelete(block.id)}
-          >
-            <Ionicons name="trash-outline" size={18} color="#999" />
-          </TouchableOpacity>
-        </View>
+            <TouchableWithoutFeedback onPress={() => setMenuVisible(false)}>
+              <View style={styles.modalOverlay}>
+                <View 
+                  style={[
+                    styles.actionMenu,
+                    {
+                      left: menuPosition.x - 110, // 调整菜单位置，向左偏移确保在按钮附近
+                      top: menuPosition.y + 10,  // 调整菜单位置，在按钮正下方
+                    }
+                  ]}
+                >
+                  <TouchableOpacity 
+                    style={styles.actionOption}
+                    onPress={() => {
+                      setMenuVisible(false);
+                      setIsEditing(true);
+                    }}
+                  >
+                    <Ionicons name="pencil-outline" size={18} color="#666" />
+                    <Text style={styles.actionOptionText}>编辑</Text>
+                  </TouchableOpacity>
+                  
+                  <View style={styles.actionDivider} />
+                  
+                  <TouchableOpacity 
+                    style={styles.actionOption}
+                    onPress={() => {
+                      setMenuVisible(false);
+                      onDelete(block.id);
+                    }}
+                  >
+                    <Ionicons name="trash-outline" size={18} color="#FF453A" />
+                    <Text style={[styles.actionOptionText, {color: '#FF453A'}]}>删除</Text>
+                  </TouchableOpacity>
+                  
+                  <View style={styles.actionDivider} />
+                  
+                  <TouchableOpacity 
+                    style={styles.actionOption}
+                    onPress={() => {
+                      setMenuVisible(false);
+                      onAddEmptyNote && onAddEmptyNote(block.id);
+                    }}
+                  >
+                    <Ionicons name="add-circle-outline" size={18} color="#4CAF50" />
+                    <Text style={[styles.actionOptionText, {color: '#4CAF50'}]}>添加笔记</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </TouchableWithoutFeedback>
+          </Modal>
+        )}
       </View>
       
       {isEditing ? (
@@ -378,11 +510,11 @@ export default function DocumentBlock({
           {/* 可选择的转录内容 - 使用高亮渲染器 */}
           {renderHighlightedContent()}
           
-          {/* 点击文本区域外部时隐藏菜单 */}
-          {selectionVisible && (
+          {/* 文本选择菜单 */}
+          {selectionVisible && selectedText.length > 0 && (
             <Modal
               transparent
-              visible={selectionVisible}
+              visible={selectionVisible && selectedText.length > 0}
               animationType="fade"
               onRequestClose={hideSelectionMenu}
             >
@@ -527,6 +659,7 @@ const styles = StyleSheet.create({
     borderLeftWidth: 3,
     borderLeftColor: '#6c757d',
     position: 'relative',
+    paddingTop: 12, // 减小顶部间距，让布局更紧凑
   },
   transcriptionHeader: {
     flexDirection: 'row',
@@ -637,7 +770,8 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     fontStyle: 'italic', // 斜体，区分于转录
     color: '#555', // 字体颜色深一些，增强可读性
-    paddingRight: 50, // 为右侧按钮预留空间
+    paddingRight: 30, // 为右侧按钮预留空间，改小一点
+    marginBottom: 8, // 增加一点底部间距，为可能的添加笔记按钮留空间
   },
   noteActions: {
     position: 'absolute', 
@@ -651,6 +785,29 @@ const styles = StyleSheet.create({
   noteAction: {
     padding: 6,
     marginLeft: 2,
+  },
+  noteAddButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    backgroundColor: 'rgba(76, 175, 80, 0.1)',
+    borderRadius: 16,
+    alignSelf: 'flex-end',
+    borderWidth: 1,
+    borderColor: 'rgba(76, 175, 80, 0.2)',
+  },
+  addNoteButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  addNoteButtonText: {
+    fontSize: 12,
+    color: '#4CAF50',
+    marginLeft: 4,
+    fontWeight: '500',
   },
   
   // 选择文本后的菜单和Modal样式
@@ -696,5 +853,68 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontStyle: 'italic',
     color: '#666',
+  },
+  transcriptionAddButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: 'rgba(76, 175, 80, 0.1)',
+    borderRadius: 16,
+    alignSelf: 'flex-end',
+    borderWidth: 1,
+    borderColor: 'rgba(76, 175, 80, 0.2)',
+    marginRight: 10,
+  },
+  menuButton: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    padding: 6,
+    zIndex: 10,
+    backgroundColor: 'rgba(245, 245, 245, 0.9)',
+    borderRadius: 14,
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  transcriptionMenuButton: {
+    top: 2,
+    right: 0,
+  },
+  actionMenu: {
+    position: 'absolute',
+    backgroundColor: 'white',
+    borderRadius: 10,
+    paddingVertical: 6,
+    minWidth: 130,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+    zIndex: 1000,
+    borderWidth: 0.5,
+    borderColor: 'rgba(0, 0, 0, 0.1)',
+  },
+  actionOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  actionOptionText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#666',
+    marginLeft: 10,
+  },
+  actionDivider: {
+    height: 1,
+    backgroundColor: '#eee',
+    marginHorizontal: 0,
   },
 }); 

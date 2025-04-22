@@ -144,6 +144,36 @@ export default function DocumentScreen({ navigation, route }) {
     return noteBlock.id;
   }, [document, setNewNoteId]);
   
+  // 处理添加空白笔记
+  const handleAddEmptyNote = useCallback((blockId) => {
+    // 查找目标块在数组中的位置
+    const blockIndex = document.blocks.findIndex(block => block.id === blockId);
+    if (blockIndex === -1) return;
+    
+    // 创建新块数组
+    let updatedBlocks = [...document.blocks];
+    
+    // 创建空白笔记块
+    const emptyNoteBlock = {
+      id: Date.now().toString() + '_note',
+      content: '',
+      type: 'note',
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    
+    // 在目标块后插入笔记
+    updatedBlocks.splice(blockIndex + 1, 0, emptyNoteBlock);
+    
+    // 更新文档
+    document.blocks = updatedBlocks;
+    
+    // 设置新笔记ID以自动聚焦
+    setNewNoteId(emptyNoteBlock.id);
+    
+    return emptyNoteBlock.id;
+  }, [document, setNewNoteId]);
+  
   // 滚动到底部函数
   const scrollToBottom = (animated = true) => {
     if (scrollViewRef.current) {
@@ -297,6 +327,7 @@ export default function DocumentScreen({ navigation, route }) {
                 onUpdate={updateBlock}
                 onDelete={handleDeleteBlock}
                 onAddNote={handleAddNoteToSelection}
+                onAddEmptyNote={handleAddEmptyNote}
                 active={currentTranscriptionSession.blockId === block.id}
                 autoFocus={block.id === newNoteId}
                 relatedNotes={getRelatedNotes(block.id)}
