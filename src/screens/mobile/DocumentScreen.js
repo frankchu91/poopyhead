@@ -11,7 +11,8 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
-  Keyboard
+  Keyboard,
+  Dimensions
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import useDocumentLogic from '../../core/useDocumentLogic';
@@ -56,10 +57,11 @@ export default function DocumentScreen({ navigation, route }) {
   useEffect(() => {
     const keyboardDidShowListener = Keyboard.addListener(
       'keyboardDidShow',
-      () => {
+      (event) => {
         setKeyboardVisible(true);
       }
     );
+    
     const keyboardDidHideListener = Keyboard.addListener(
       'keyboardDidHide',
       () => {
@@ -334,109 +336,116 @@ export default function DocumentScreen({ navigation, route }) {
         </TouchableOpacity>
       </View>
       
-      {/* 文档内容 */}
-      <ScrollView 
-        ref={scrollViewRef}
-        style={styles.documentContent}
-        contentContainerStyle={styles.documentContentContainer}
-      >
-        {document.blocks.length === 0 ? (
-          <View style={styles.emptyDocument}>
-            <Text style={styles.emptyDocumentText}>
-              {isRecording 
-                ? "正在录音和转录..." 
-                : "点击下方麦克风按钮开始转录"
-              }
-            </Text>
-          </View>
-        ) : (
-          <>
-            {document.blocks.map(block => (
-              <DocumentBlock
-                key={block.id}
-                block={block}
-                onUpdate={updateBlock}
-                onDelete={handleDeleteBlock}
-                onAddNote={handleAddNoteToSelection}
-                onAddEmptyNote={handleAddEmptyNote}
-                active={currentTranscriptionSession.blockId === block.id}
-                autoFocus={block.id === newNoteId}
-                relatedNotes={getRelatedNotes(block.id)}
-              />
-            ))}
-          </>
-        )}
-        
-        {/* 占位区域确保内容不被底部输入框遮挡 */}
-        <View style={{ height: 100 }} />
-      </ScrollView>
-      
-      {/* 录音状态指示器 */}
-      {isRecording && (
-        <RecordingProgressBar 
-          isRecording={isRecording}
-          duration={recordingTime}
-          transcriptionProgress={transcriptionProgress}
-        />
-      )}
-      
-      {/* 底部输入区域 */}
+      {/* 使用KeyboardAvoidingView包裹整个内容区域 */}
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={0}
-        style={styles.inputContainer}
+        style={styles.keyboardAvoidingContainer}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
       >
-        {/* 键盘收起图标 - 只在键盘可见时显示 */}
-        {isKeyboardVisible && (
-          <TouchableOpacity 
-            style={styles.keyboardDismissButton}
-            onPress={dismissKeyboard}
-          >
-            <Ionicons name="chevron-down" size={20} color="#666" />
-          </TouchableOpacity>
+        {/* 文档内容 */}
+        <ScrollView 
+          ref={scrollViewRef}
+          style={styles.documentContent}
+          contentContainerStyle={styles.documentContentContainer}
+        >
+          {document.blocks.length === 0 ? (
+            <View style={styles.emptyDocument}>
+              <Text style={styles.emptyDocumentText}>
+                {isRecording 
+                  ? "正在录音和转录..." 
+                  : "点击下方麦克风按钮开始转录"
+                }
+              </Text>
+            </View>
+          ) : (
+            <>
+              {document.blocks.map(block => (
+                <DocumentBlock
+                  key={block.id}
+                  block={block}
+                  onUpdate={updateBlock}
+                  onDelete={handleDeleteBlock}
+                  onAddNote={handleAddNoteToSelection}
+                  onAddEmptyNote={handleAddEmptyNote}
+                  active={currentTranscriptionSession.blockId === block.id}
+                  autoFocus={block.id === newNoteId}
+                  relatedNotes={getRelatedNotes(block.id)}
+                />
+              ))}
+            </>
+          )}
+          
+          {/* 底部间距，确保可以滚动到底部内容 */}
+          <View style={{ height: 20 }} />
+        </ScrollView>
+        
+        {/* 录音状态指示器 */}
+        {isRecording && (
+          <RecordingProgressBar 
+            isRecording={isRecording}
+            duration={recordingTime}
+            transcriptionProgress={transcriptionProgress}
+          />
         )}
         
-        <View style={styles.inputWrapper}>
-          <TouchableOpacity 
-            style={[
-              styles.recordButton,
-              isRecording && styles.recordingActive,
-              isProcessingRecording && styles.recordingProcessing
-            ]}
-            onPress={toggleRecording}
-            disabled={isProcessingRecording}
-          >
-            {isProcessingRecording ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Ionicons 
-                name={isRecording ? "stop-circle" : "mic"} 
-                size={24} 
-                color={isRecording ? "#fff" : "#0A84FF"} 
-              />
-            )}
-          </TouchableOpacity>
+        {/* 底部输入区域 */}
+        <View style={styles.inputContainer}>
+          {/* 键盘收起图标 - 只在键盘可见时显示 */}
+          {isKeyboardVisible && (
+            <TouchableOpacity 
+              style={styles.keyboardDismissButton}
+              onPress={dismissKeyboard}
+            >
+              <Ionicons name="chevron-down" size={20} color="#666" />
+            </TouchableOpacity>
+          )}
           
-          <TextInput
-            style={styles.noteInput}
-            placeholder="添加笔记..."
-            value={noteText}
-            onChangeText={setNoteText}
-            multiline
-            maxHeight={100}
-          />
-          
-          <TouchableOpacity 
-            style={styles.addNoteButton}
-            onPress={handleSendNote}
-            disabled={!noteText.trim()}
-          >
-            <Ionicons 
-              name="send" 
-              size={24} 
-              color={noteText.trim() ? "#0A84FF" : "#999"} 
+          <View style={styles.inputWrapper}>
+            <TouchableOpacity 
+              style={[
+                styles.recordButton,
+                isRecording && styles.recordingActive,
+                isProcessingRecording && styles.recordingProcessing
+              ]}
+              onPress={toggleRecording}
+              disabled={isProcessingRecording}
+            >
+              {isProcessingRecording ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Ionicons 
+                  name={isRecording ? "stop-circle" : "mic"} 
+                  size={24} 
+                  color={isRecording ? "#fff" : "#0A84FF"} 
+                />
+              )}
+            </TouchableOpacity>
+            
+            <TextInput
+              style={styles.noteInput}
+              placeholder="添加笔记..."
+              value={noteText}
+              onChangeText={setNoteText}
+              multiline
+              maxHeight={100}
+              onFocus={() => {
+                // 当获得焦点时，滚动到内容底部
+                setTimeout(() => scrollToBottom(false), 100);
+              }}
             />
-          </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.addNoteButton}
+              onPress={handleSendNote}
+              disabled={!noteText.trim()}
+            >
+              <Ionicons 
+                name="send" 
+                size={24} 
+                color={noteText.trim() ? "#0A84FF" : "#999"} 
+              />
+            </TouchableOpacity>
+          </View>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -469,13 +478,16 @@ const styles = StyleSheet.create({
   menuButton: {
     padding: 4,
   },
+  keyboardAvoidingContainer: {
+    flex: 1,
+  },
   documentContent: {
     flex: 1,
     backgroundColor: '#f5f5f7',
   },
   documentContentContainer: {
     padding: 16,
-    paddingBottom: 120,
+    paddingBottom: 20,
   },
   emptyDocument: {
     flex: 1,
@@ -492,10 +504,6 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#eee',
     backgroundColor: '#fff',
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -2 },
     shadowOpacity: 0.05,
