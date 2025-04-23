@@ -10,7 +10,8 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
-  ActivityIndicator
+  ActivityIndicator,
+  Keyboard
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import useDocumentLogic from '../../core/useDocumentLogic';
@@ -47,6 +48,36 @@ export default function DocumentScreen({ navigation, route }) {
   // Refs
   const scrollViewRef = useRef(null);
   const speechToTextRef = useRef(null);
+  
+  // 添加键盘状态跟踪
+  const [isKeyboardVisible, setKeyboardVisible] = useState(false);
+  
+  // 监听键盘显示/隐藏事件
+  useEffect(() => {
+    const keyboardDidShowListener = Keyboard.addListener(
+      'keyboardDidShow',
+      () => {
+        setKeyboardVisible(true);
+      }
+    );
+    const keyboardDidHideListener = Keyboard.addListener(
+      'keyboardDidHide',
+      () => {
+        setKeyboardVisible(false);
+      }
+    );
+
+    // 清理订阅
+    return () => {
+      keyboardDidShowListener.remove();
+      keyboardDidHideListener.remove();
+    };
+  }, []);
+  
+  // 添加收起键盘的方法
+  const dismissKeyboard = () => {
+    Keyboard.dismiss();
+  };
   
   // 当newNoteId变化时，清除它
   useEffect(() => {
@@ -355,7 +386,37 @@ export default function DocumentScreen({ navigation, route }) {
         keyboardVerticalOffset={0}
         style={styles.inputContainer}
       >
+        {/* 键盘收起图标 - 只在键盘可见时显示 */}
+        {isKeyboardVisible && (
+          <TouchableOpacity 
+            style={styles.keyboardDismissButton}
+            onPress={dismissKeyboard}
+          >
+            <Ionicons name="chevron-down" size={20} color="#666" />
+          </TouchableOpacity>
+        )}
+        
         <View style={styles.inputWrapper}>
+          <TouchableOpacity 
+            style={[
+              styles.recordButton,
+              isRecording && styles.recordingActive,
+              isProcessingRecording && styles.recordingProcessing
+            ]}
+            onPress={toggleRecording}
+            disabled={isProcessingRecording}
+          >
+            {isProcessingRecording ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Ionicons 
+                name={isRecording ? "stop-circle" : "mic"} 
+                size={24} 
+                color={isRecording ? "#fff" : "#0A84FF"} 
+              />
+            )}
+          </TouchableOpacity>
+          
           <TextInput
             style={styles.noteInput}
             placeholder="添加笔记..."
@@ -375,26 +436,6 @@ export default function DocumentScreen({ navigation, route }) {
               size={24} 
               color={noteText.trim() ? "#0A84FF" : "#999"} 
             />
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={[
-              styles.recordButton,
-              isRecording && styles.recordingActive,
-              isProcessingRecording && styles.recordingProcessing
-            ]}
-            onPress={toggleRecording}
-            disabled={isProcessingRecording}
-          >
-            {isProcessingRecording ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Ionicons 
-                name={isRecording ? "stop-circle" : "mic"} 
-                size={24} 
-                color={isRecording ? "#fff" : "#0A84FF"} 
-              />
-            )}
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -468,6 +509,7 @@ const styles = StyleSheet.create({
     padding: 12,
     fontSize: 16,
     maxHeight: 100,
+    marginLeft: 0,
   },
   addNoteButton: {
     marginHorizontal: 8,
@@ -480,11 +522,29 @@ const styles = StyleSheet.create({
     backgroundColor: '#f0f0f0',
     justifyContent: 'center',
     alignItems: 'center',
+    marginRight: 8,
   },
   recordingActive: {
     backgroundColor: '#FF453A',
   },
   recordingProcessing: {
     backgroundColor: '#0A84FF',
+  },
+  keyboardDismissButton: {
+    position: 'absolute',
+    top: -30,
+    right: 10,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 1.5,
+    elevation: 2,
+    zIndex: 100,
   },
 }); 
