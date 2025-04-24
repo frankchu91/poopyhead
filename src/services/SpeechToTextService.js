@@ -244,6 +244,7 @@ export default class SpeechToTextService {
               transcribedDuration: estimatedTranscribedDuration,
               progress,
               isIncremental: true,
+              isFullTranscription: true, // 指示这是完整的转录文本，而不是增量
               timestamp: new Date() // 添加当前时间戳
             });
           }
@@ -321,12 +322,15 @@ export default class SpeechToTextService {
         this.processingIndex++;
       }
       
-      // 最后一次更新UI
+      // 最后一次更新UI，确保传递最终的累积转录结果
       if (this.transcription && this.onTranscriptionUpdate) {
+        console.log("发送最终转录结果:", this.transcription);
         this.onTranscriptionUpdate(this.transcription, {
           totalDuration: (new Date() - this.recordingStartTime) / 1000,
           transcribedDuration: this.audioFiles.length * 3,
-          progress: 1.0
+          progress: 1.0,
+          isFullTranscription: true, // 指示这是完整的转录文本
+          isFinalTranscription: true // 指示这是最终的转录结果
         });
       }
     } catch (error) {

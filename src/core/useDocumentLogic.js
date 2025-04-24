@@ -140,50 +140,30 @@ export default function useDocumentLogic() {
     setCurrentTranscriptionSession(prev => {
       const timestamp = progressInfo?.timestamp || new Date();
       
-      // 查找当前活跃的转录块
-      let activeBlockId = prev.blockId;
-      let existingContent = "";
+      // 查找当前块ID
+      let targetBlockId = prev.blockId;
       
-      // 如果没有活跃的转录块，尝试找到最后一个转录块
-      if (!activeBlockId) {
+      // 如果没有当前块ID，则使用最后一个转录块或创建新块
+      if (!targetBlockId) {
         const transcriptionBlocks = document.blocks.filter(block => block.type === 'transcription');
-        const lastTranscriptionBlock = transcriptionBlocks[transcriptionBlocks.length - 1];
+        const lastBlock = transcriptionBlocks[transcriptionBlocks.length - 1];
         
-        if (lastTranscriptionBlock) {
-          // 使用现有的最后一个转录块
-          activeBlockId = lastTranscriptionBlock.id;
-          existingContent = lastTranscriptionBlock.content;
-          if (existingContent === "正在倾听...") {
-            existingContent = "";
-          }
+        if (lastBlock) {
+          targetBlockId = lastBlock.id;
         } else {
-          // 没有找到转录块，创建一个新的
-          activeBlockId = addBlock(text.trim(), 'transcription');
-        }
-      } else {
-        // 获取当前块的内容
-        const currentBlock = document.blocks.find(block => block.id === activeBlockId);
-        if (currentBlock) {
-          existingContent = currentBlock.content;
-          if (existingContent === "正在倾听...") {
-            existingContent = "";
-          }
+          // 创建新块
+          targetBlockId = addBlock(text.trim(), 'transcription');
         }
       }
       
-      // 构建更新后的文本 - 如果有已存在的内容则追加，否则使用新内容
-      const updatedText = existingContent 
-        ? `${existingContent} ${text.trim()}`
-        : text.trim();
-      
       // 更新块内容
-      updateBlock(activeBlockId, updatedText);
+      updateBlock(targetBlockId, text.trim());
       
       // 返回更新后的会话状态
       return {
-        active: true,
-        blockId: activeBlockId,
-        text: updatedText,
+        ...prev,
+        blockId: targetBlockId,
+        text: text.trim(),
         lastTimestamp: timestamp
       };
     });
@@ -205,26 +185,33 @@ export default function useDocumentLogic() {
       
       let initialBlockId;
       
-      // 检查是否应该创建新的转录块 - 如果添加过笔记或明确设置了标志
-      if (shouldCreateNewBlock) {
+      // 确定是否需要创建新块
+      // 1. 首次录音时创建新块
+      // 2. 添加笔记后创建新块
+      // 3. 避免在已经有转录块且正在转录的情况下创建新块
+      if (shouldCreateNewBlock || document.blocks.length === 0) {
         // 创建一个全新的空白转录块
         initialBlockId = addBlock("正在倾听...", 'transcription');
         setShouldCreateNewBlock(false); // 重置标志
+        console.log("创建新的转录块:", initialBlockId);
       } else {
         // 查找最后一个转录块
         const transcriptionBlocks = document.blocks.filter(block => block.type === 'transcription');
         const lastTranscriptionBlock = transcriptionBlocks[transcriptionBlocks.length - 1];
         
         if (lastTranscriptionBlock) {
-          // 使用现有的最后一个转录块继续转录
+          // 使用最后一个转录块
           initialBlockId = lastTranscriptionBlock.id;
-          // 只有当它是空白或者是"正在倾听..."时才重置内容
+          console.log("使用现有转录块:", initialBlockId);
+          
+          // 如果内容为空或仅为"正在倾听..."，则重置内容
           if (!lastTranscriptionBlock.content || lastTranscriptionBlock.content === "正在倾听...") {
             updateBlock(initialBlockId, "正在倾听...");
           }
         } else {
-          // 如果没有转录块，创建一个新的
+          // 没有找到转录块，创建新的
           initialBlockId = addBlock("正在倾听...", 'transcription');
+          console.log("没有找到转录块，创建新的:", initialBlockId);
         }
       }
       
@@ -263,7 +250,7 @@ export default function useDocumentLogic() {
     try {
       clearInterval(timerRef.current);
       
-      // 标记当前转录块为已完成
+      // 检查当前转录块
       if (currentTranscriptionSession.blockId) {
         const currentBlock = document.blocks.find(
           block => block.id === currentTranscriptionSession.blockId
@@ -272,19 +259,30 @@ export default function useDocumentLogic() {
         if (currentBlock && currentBlock.content === "正在倾听...") {
           // 如果内容还是初始值，删除这个块
           deleteBlock(currentTranscriptionSession.blockId);
+          
+          // 完全重置会话状态
+          setCurrentTranscriptionSession({
+            active: false,
+            blockId: null,
+            text: "",
+            lastTimestamp: null
+          });
+        } else {
+          // 保留当前块ID引用，但标记为非活跃
+          // 这允许后续的转录内容继续更新到同一个块
+          setCurrentTranscriptionSession(prev => ({
+            ...prev,
+            active: false,
+            lastTimestamp: new Date()
+          }));
         }
       }
       
-      // 重置会话状态
-      setCurrentTranscriptionSession({
-        active: false,
-        blockId: null,
-        text: "",
-        lastTimestamp: null
-      });
-      
       setIsRecording(false);
       setRecordingTime(0);
+      
+      // 设置标志，指示下次录音时应该创建新的转录块
+      setShouldCreateNewBlock(true);
       
       return true;
     } catch (err) {

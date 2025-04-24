@@ -218,27 +218,26 @@ export default function DocumentScreen({ navigation, route }) {
   const toggleRecording = async () => {
     if (isProcessingRecording) return;
     
-    setIsProcessingRecording(true);
-    
     try {
       if (isRecording) {
-        // 结束录音
-        console.log("Stopping recording...");
-        const text = await speechToTextRef.current.stopRecording();
-        console.log("Got text:", text);
+        // 结束录音 - 保存当前转录会话状态
+        const activeBlockId = currentTranscriptionSession.blockId;
+        console.log("停止录音，当前块ID:", activeBlockId);
         
+        // 停止UI显示的录音状态，保持按钮立即恢复到麦克风图标
         stopRecording();
+        
+        // 后台继续处理转录，并更新到当前块
+        speechToTextRef.current.stopRecording().catch(error => {
+          console.error("转录错误:", error);
+        });
       } else {
-        // 开始录音前先准备
-        console.log("Starting recording...");
+        // 开始录音
+        console.log("开始录音...");
         
-        // 获取是否需要创建新块的标志
-        const shouldCreateNew = document.blocks.some(block => block.type === 'note');
-        
-        // 如果之前添加过笔记，确保SpeechToTextService的转录状态被重置
-        if (shouldCreateNew && speechToTextRef.current) {
+        // 重置转录状态
+        if (speechToTextRef.current) {
           speechToTextRef.current.resetTranscription();
-          console.log("检测到之前有笔记，已重置转录状态");
         }
         
         const recordingStarted = await startRecording();
@@ -258,8 +257,6 @@ export default function DocumentScreen({ navigation, route }) {
       console.error("录音操作错误:", error);
       stopRecording();
       Alert.alert("录音错误", "录音过程中发生错误");
-    } finally {
-      setIsProcessingRecording(false);
     }
   };
   
@@ -385,15 +382,6 @@ export default function DocumentScreen({ navigation, route }) {
           {/* 底部间距，确保可以滚动到底部内容 */}
           <View style={{ height: 20 }} />
         </ScrollView>
-        
-        {/* 录音状态指示器
-        {isRecording && (
-          <RecordingProgressBar 
-            isRecording={isRecording}
-            duration={recordingTime}
-            transcriptionProgress={transcriptionProgress}
-          />
-        )} */}
         
         {/* 底部输入区域 */}
         <View style={styles.inputContainer}>

@@ -690,88 +690,88 @@ export default function MobileChatScreen({ navigation, route }) {
   };
 
   // 修改toggleRecording函数
-  const toggleRecording = async () => {
-    try {
-      if (isRecording) {
-        // 结束录音
-        console.log("Stopping recording...");
-        const text = await speechToTextRef.current.stopRecording();
-        console.log("Got text:", text);
+  // const toggleRecording = async () => {
+  //   try {
+  //     if (isRecording) {
+  //       // 结束录音
+  //       console.log("Stopping recording...");
+  //       const text = await speechToTextRef.current.stopRecording();
+  //       console.log("Got text:", text);
         
-        // 标记当前转录消息为已完成
-        setMessages(prev => prev.map(msg => 
-          msg.id === currentTranscriptionSession.messageId 
-            ? { ...msg, isActive: false, isComplete: true } 
-            : msg
-        ));
+  //       // 标记当前转录消息为已完成
+  //       setMessages(prev => prev.map(msg => 
+  //         msg.id === currentTranscriptionSession.messageId 
+  //           ? { ...msg, isActive: false, isComplete: true } 
+  //           : msg
+  //       ));
         
-        // 重置转录状态
-        setCurrentTranscriptionSession({
-          active: false,
-          messageId: null,
-          text: "",
-          lastTimestamp: null
-        });
+  //       // 重置转录状态
+  //       setCurrentTranscriptionSession({
+  //         active: false,
+  //         messageId: null,
+  //         text: "",
+  //         lastTimestamp: null
+  //       });
         
-        setIsRecording(false);
-      } else {
-        // 重置转录会话状态
-        setCurrentTranscriptionSession({
-          active: false,
-          messageId: null,
-          text: "",
-          lastTimestamp: null
-        });
+  //       setIsRecording(false);
+  //     } else {
+  //       // 重置转录会话状态
+  //       setCurrentTranscriptionSession({
+  //         active: false,
+  //         messageId: null,
+  //         text: "",
+  //         lastTimestamp: null
+  //       });
         
-        // 开始录音前先创建一个初始消息
-        const newMessageId = Date.now().toString();
-        const newMessage = {
-          id: newMessageId,
-          type: 'text',
-          text: "正在倾听...",
-          isSpeaker: true,
-          speakerName: "Speaker A",
-          isActive: true,
-          isComplete: false,
-          timestamp: new Date()
-        };
+  //       // 开始录音前先创建一个初始消息
+  //       const newMessageId = Date.now().toString();
+  //       const newMessage = {
+  //         id: newMessageId,
+  //         type: 'text',
+  //         text: "正在倾听...",
+  //         isSpeaker: true,
+  //         speakerName: "Speaker A",
+  //         isActive: true,
+  //         isComplete: false,
+  //         timestamp: new Date()
+  //       };
         
-        // 添加新消息
-        setMessages(prev => [...prev, newMessage]);
+  //       // 添加新消息
+  //       setMessages(prev => [...prev, newMessage]);
         
-        // 设置新会话状态
-        setCurrentTranscriptionSession({
-          active: true,
-          messageId: newMessageId,
-          text: "正在倾听...",
-          lastTimestamp: new Date()
-        });
+  //       // 设置新会话状态
+  //       setCurrentTranscriptionSession({
+  //         active: true,
+  //         messageId: newMessageId,
+  //         text: "正在倾听...",
+  //         lastTimestamp: new Date()
+  //       });
         
-        console.log("设置初始转录消息ID:", newMessageId);
+  //       console.log("设置初始转录消息ID:", newMessageId);
         
-        // 开始录音
-        console.log("Starting recording...");
-        const success = await speechToTextRef.current.startRecording();
-        if (success) {
-          setIsRecording(true);
-        } else {
-          // 如果录音启动失败，移除刚刚创建的消息
-          setMessages(prev => prev.filter(msg => msg.id !== newMessageId));
-          setCurrentTranscriptionSession({
-            active: false,
-            messageId: null,
-            text: "",
-            lastTimestamp: null
-          });
-          Alert.alert("录音失败", "无法启动录音，请检查麦克风权限");
-        }
-      }
-    } catch (error) {
-      console.error("录音操作错误:", error);
-      setIsRecording(false);
-      Alert.alert("录音错误", "录音过程中发生错误");
-    }
-  };
+  //       // 开始录音
+  //       console.log("Starting recording...");
+  //       const success = await speechToTextRef.current.startRecording();
+  //       if (success) {
+  //         setIsRecording(true);
+  //       } else {
+  //         // 如果录音启动失败，移除刚刚创建的消息
+  //         setMessages(prev => prev.filter(msg => msg.id !== newMessageId));
+  //         setCurrentTranscriptionSession({
+  //           active: false,
+  //           messageId: null,
+  //           text: "",
+  //           lastTimestamp: null
+  //         });
+  //         Alert.alert("录音失败", "无法启动录音，请检查麦克风权限");
+  //       }
+  //     }
+  //   } catch (error) {
+  //     console.error("录音操作错误:", error);
+  //     setIsRecording(false);
+  //     Alert.alert("录音错误", "录音过程中发生错误");
+  //   }
+  // };
 
   // 修改handleSendMessage函数
   const handleSendMessage = () => {
@@ -1043,7 +1043,7 @@ export default function MobileChatScreen({ navigation, route }) {
               inputAccessoryViewID={Platform.OS === 'ios' ? INPUT_ACCESSORY_ID : undefined}
             />
             
-            <TouchableOpacity 
+            {/* <TouchableOpacity 
               style={[styles.sendButton, isRecording && { backgroundColor: '#FF453A', borderRadius: 20 }]}
               onPress={handleRecordingAction}
               onLongPress={cancelRecording}
@@ -1055,7 +1055,7 @@ export default function MobileChatScreen({ navigation, route }) {
                 size={22} 
                 color={isRecording ? "#fff" : "#0A84FF"} 
               />
-            </TouchableOpacity>
+            </TouchableOpacity> */}
           </View>
         ) : null}
       </KeyboardAvoidingView>
