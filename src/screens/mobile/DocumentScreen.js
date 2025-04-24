@@ -310,6 +310,13 @@ export default function DocumentScreen({ navigation, route }) {
     );
   };
   
+  // 添加格式化时间的函数
+  const formatTime = (seconds) => {
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return `${minutes}:${remainingSeconds < 10 ? '0' : ''}${remainingSeconds}`;
+  };
+  
   return (
     <SafeAreaView style={styles.container}>
       {/* 标题栏 */}
@@ -379,14 +386,14 @@ export default function DocumentScreen({ navigation, route }) {
           <View style={{ height: 20 }} />
         </ScrollView>
         
-        {/* 录音状态指示器 */}
+        {/* 录音状态指示器
         {isRecording && (
           <RecordingProgressBar 
             isRecording={isRecording}
             duration={recordingTime}
             transcriptionProgress={transcriptionProgress}
           />
-        )}
+        )} */}
         
         {/* 底部输入区域 */}
         <View style={styles.inputContainer}>
@@ -413,11 +420,18 @@ export default function DocumentScreen({ navigation, route }) {
               {isProcessingRecording ? (
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
-                <Ionicons 
-                  name={isRecording ? "stop-circle" : "mic"} 
-                  size={24} 
-                  color={isRecording ? "#fff" : "#0A84FF"} 
-                />
+                <>
+                  {isRecording ? (
+                    <View style={styles.recordingContainer}>
+                      <Ionicons name="stop-circle" size={24} color="#fff" />
+                      <Text style={styles.recordingTime}>
+                        {formatTime(recordingTime)}
+                      </Text>
+                    </View>
+                  ) : (
+                    <Ionicons name="mic" size={24} color="#0A84FF" />
+                  )}
+                </>
               )}
             </TouchableOpacity>
             
@@ -538,7 +552,20 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   recordingActive: {
-    backgroundColor: '#FF453A',
+    backgroundColor: '#0A84FF',
+    width: 'auto',
+    paddingHorizontal: 12,
+  },
+  recordingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  recordingTime: {
+    color: '#fff',
+    marginLeft: 8,
+    fontWeight: '600',
+    fontSize: 14,
   },
   recordingProcessing: {
     backgroundColor: '#0A84FF',
