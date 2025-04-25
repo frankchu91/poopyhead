@@ -15,22 +15,18 @@ function debugLog(step, data) {
 
 export default class SpeechToTextService {
   constructor(onTranscriptionUpdate) {
-    this.recording = null;              // 用于录音的单一对象
+    this.recording = null;
     this.isRecording = false;
     this.recordingInterval = null;
     this.onTranscriptionUpdate = onTranscriptionUpdate;
     this.transcription = "";
     this.recordingStartTime = null;
-    this.mainAudioUri = null;           // 存储完整录音的URI
     
     // 添加文件收集器
     this.audioFiles = [];
     this.processingIndex = 0;
     this.isProcessing = false;
-    this.currentMessageId = null;       // 添加当前消息ID追踪
-    this.recordingDuration = 0;         // 记录当前录音总时长(秒)
-    this.segmentDuration = 3;           // 每个片段的时长(秒)
-    this.lastSegmentTime = 0;           // 上次截取片段的时间
+    this.currentMessageId = null;  // 添加当前消息ID追踪
   }
 
   // 开始录音
@@ -55,8 +51,10 @@ export default class SpeechToTextService {
       // 确保任何现有录音已停止
       await this.ensureNoActiveRecording();
       
-      // 创建新录音对象 - 使用原始WAV格式设置
+      // 创建新录音对象
       this.recording = new Audio.Recording();
+      
+      // 配置高质量音频
       await this.recording.prepareToRecordAsync({
         android: {
           extension: '.wav',
@@ -74,8 +72,9 @@ export default class SpeechToTextService {
           linearPCMIsFloat: false,
         },
       });
+      
+      // 开始录音
       await this.recording.startAsync();
-      console.log("录音已开始，使用WAV格式（16kHz, 16位PCM）");
       
       // 完全重置所有状态
       this.isRecording = true;
@@ -84,20 +83,15 @@ export default class SpeechToTextService {
       this.audioFiles = [];
       this.processingIndex = 0;
       this.isProcessing = false;
-      this.recordingDuration = 0; // 重置录音时长
-      this.lastSegmentTime = 0;   // 重置上次截取片段的时间
-      this.mainAudioUri = null;   // 重置完整录音的URI
       
       console.log("录音已开始，所有转录状态已重置");
       
-      // 设置每3秒处理一次录音片段
+      // 设置每3秒保存一次录音
       this.recordingInterval = setInterval(async () => {
         if (this.isRecording) {
-          await this.captureAudioSegment();
-          // 更新录音时长
-          this.recordingDuration += this.segmentDuration;
+          await this.saveCurrentSegment();
         }
-      }, this.segmentDuration * 1000);
+      }, 3000);
       
       return true;
     } catch (error) {
@@ -125,69 +119,85 @@ export default class SpeechToTextService {
     }
   }
   
-  // 捕获当前音频片段用于转录，但不中断主录音
-  async captureAudioSegment() {
+  // 保存当前录音段，并准备新段
+  async saveCurrentSegment() {
     if (!this.isRecording || !this.recording) return;
     
     try {
-      // 获取当前录音状态
-      const status = await this.recording.getStatusAsync();
-      if (!status.isRecording) {
-        console.log("录音未处于活动状态，无法捕获片段");
-        return;
+      // 暂停当前录音
+      await this.recording.pauseAsync();
+      
+      // 获取文件URI
+      const uri = this.recording.getURI();
+      
+      if (uri) {
+        // 添加到文件列表
+        this.audioFiles.push(uri);
+        
+        // 处理队列中的文件
+        if (!this.isProcessing) {
+          this.processAudioFiles();
+        }
       }
       
-      // 获取主录音的URI - 用于最终返回完整录音
-      this.mainAudioUri = this.recording.getURI();
-      if (!this.mainAudioUri) {
-        console.log("无法获取录音URI");
-        return;
-      }
+      // 停止并卸载当前录音，准备创建新录音
+      await this.recording.stopAndUnloadAsync();
+      this.recording = null;
       
-      // 检查并确认文件扩展名（应该是.wav）
-      const fileExt = this.mainAudioUri.split('.').pop().toLowerCase();
-      console.log(`当前录音文件格式: ${fileExt}`);
+      // 创建新录音对象
+      this.recording = new Audio.Recording();
       
-      // 计算这个片段的时间信息
-      const startTime = this.lastSegmentTime;
-      const endTime = this.recordingDuration + this.segmentDuration;
-      this.lastSegmentTime = endTime;
-      
-      // 为转录创建音频片段的副本
-      const segmentFileName = `segment_${Date.now()}.wav`;
-      const segmentUri = FileSystem.cacheDirectory + segmentFileName;
-      
-      // 复制当前录音文件的副本用于转录
-      await FileSystem.copyAsync({
-        from: this.mainAudioUri,
-        to: segmentUri
+      // 配置高质量音频
+      await this.recording.prepareToRecordAsync({
+        android: {
+          extension: '.wav',
+          outputFormat: Audio.RECORDING_OPTION_ANDROID_OUTPUT_FORMAT_PCM_16BIT,
+          audioEncoder: Audio.RECORDING_OPTION_ANDROID_AUDIO_ENCODER_PCM_16BIT,
+          sampleRate: 16000,
+          numberOfChannels: 1,
+        },
+        ios: {
+          extension: '.wav',
+          sampleRate: 16000,
+          numberOfChannels: 1,
+          linearPCMBitDepth: 16,
+          linearPCMIsBigEndian: false,
+          linearPCMIsFloat: false,
+        },
       });
       
-      console.log(`已创建音频片段用于转录: ${segmentUri}`);
-      
-      // 检查文件是否存在
-      const fileInfo = await FileSystem.getInfoAsync(segmentUri);
-      if (!fileInfo.exists || fileInfo.size === 0) {
-        console.log("警告: 复制的文件不存在或为空");
-        return;
-      }
-      
-      console.log(`音频片段文件大小: ${fileInfo.size} 字节`);
-      
-      // 添加到文件列表，包含时间信息
-      this.audioFiles.push({
-        uri: segmentUri,
-        startTime: startTime,
-        endTime: endTime
-      });
-      
-      // 处理队列中的文件
-      if (!this.isProcessing) {
-        await this.processAudioFiles();
-      }
+      // 继续新录音
+      await this.recording.startAsync();
       
     } catch (error) {
-      console.error('捕获音频片段出错:', error);
+      console.error('Error saving segment:', error);
+      
+      // 如果失败，尝试重新开始录音
+      try {
+        await this.ensureNoActiveRecording();
+        
+        this.recording = new Audio.Recording();
+        await this.recording.prepareToRecordAsync({
+          android: {
+            extension: '.wav',
+            outputFormat: Audio.RECORDING_OPTION_ANDROID_OUTPUT_FORMAT_PCM_16BIT,
+            audioEncoder: Audio.RECORDING_OPTION_ANDROID_AUDIO_ENCODER_PCM_16BIT,
+            sampleRate: 16000,
+            numberOfChannels: 1,
+          },
+          ios: {
+            extension: '.wav',
+            sampleRate: 16000,
+            numberOfChannels: 1,
+            linearPCMBitDepth: 16,
+            linearPCMIsBigEndian: false,
+            linearPCMIsFloat: false,
+          },
+        });
+        await this.recording.startAsync();
+      } catch (restartError) {
+        console.error('Could not restart recording:', restartError);
+      }
     }
   }
   
@@ -202,8 +212,7 @@ export default class SpeechToTextService {
       const newTranscriptions = [];
       
       while (this.processingIndex < this.audioFiles.length) {
-        const fileData = this.audioFiles[this.processingIndex];
-        const fileUri = fileData.uri;
+        const fileUri = this.audioFiles[this.processingIndex];
         
         // 转录这个文件
         const transcription = await this.transcribeAudioChunk(fileUri);
@@ -226,7 +235,7 @@ export default class SpeechToTextService {
             
             const now = new Date();
             const totalDuration = (now - this.recordingStartTime) / 1000;
-            const estimatedTranscribedDuration = this.processingIndex * this.segmentDuration;
+            const estimatedTranscribedDuration = this.processingIndex * 3;
             const progress = Math.min(1.0, estimatedTranscribedDuration / totalDuration);
             
             // 调用更新方法，传递累积的完整转录文本，而不只是当前段的转录
@@ -244,7 +253,7 @@ export default class SpeechToTextService {
         this.processingIndex++;
       }
     } catch (error) {
-      console.error('处理音频文件队列出错:', error);
+      console.error('Error processing audio files:', error);
     } finally {
       this.isProcessing = false;
     }
@@ -253,10 +262,10 @@ export default class SpeechToTextService {
   // 停止录音并返回最终转录
   async stopRecording() {
     if (!this.isRecording) {
-      return { text: this.transcription, audioUri: null };
+      return this.transcription;
     }
     
-    console.log("停止录音...");
+    console.log("Stopping recording...");
     this.isRecording = false;
     
     // 清除定时器
@@ -266,52 +275,42 @@ export default class SpeechToTextService {
     }
     
     try {
-      // 确保我们获取了最终的录音URI
-      if (!this.mainAudioUri && this.recording) {
-        this.mainAudioUri = this.recording.getURI();
-      }
-      
-      // 停止录音
+      // 保存最后一段录音
       if (this.recording) {
-        await this.recording.stopAndUnloadAsync();
-        console.log(`录音已停止并保存: ${this.mainAudioUri}`);
+        const uri = this.recording.getURI();
+        if (uri) {
+          // 停止录音
+          await this.recording.stopAndUnloadAsync();
+          
+          // 添加到文件列表
+          this.audioFiles.push(uri);
+        } else {
+          await this.recording.stopAndUnloadAsync();
+        }
       }
       
       // 处理所有剩余文件 - 但只更新一次UI
       await this.processRemainingFiles();
-      
-      console.log(`录音已停止。完整录音文件: ${this.mainAudioUri}`);
-      
-      // 返回转录文本和主录音URI
-      // 注意：此处只返回主录音文件（完整录音）用于回放，不返回分段文件
-      return { 
-        text: this.transcription,
-        audioUri: this.mainAudioUri
-      };
     } catch (error) {
-      console.warn("注意: 录音可能已经停止:", error.message);
-      
-      // 出错时也尝试返回主录音文件
-      return { 
-        text: this.transcription,
-        audioUri: this.mainAudioUri
-      };
-    } finally {
-      // 清理资源
-      await this.cleanupResources();
-      console.log("录音已停止，资源已清理");
+      console.warn("Note: Recording may have already been stopped:", error.message);
     }
+    
+    // 清理资源
+    await this.cleanupResources();
+    
+    console.log("Recording stopped");
+    return this.transcription;
   }
   
-  // 专门处理剩余文件的方法
+  // 新增专门处理剩余文件的方法
   async processRemainingFiles() {
     if (this.processingIndex >= this.audioFiles.length) return;
     
     try {
       const pendingFiles = this.audioFiles.slice(this.processingIndex);
       
-      for (const fileData of pendingFiles) {
-        const transcription = await this.transcribeAudioChunk(fileData.uri);
+      for (const fileUri of pendingFiles) {
+        const transcription = await this.transcribeAudioChunk(fileUri);
         if (transcription && transcription.trim()) {
           // 将新转录添加到总转录中
           if (this.transcription) {
@@ -328,14 +327,14 @@ export default class SpeechToTextService {
         console.log("发送最终转录结果:", this.transcription);
         this.onTranscriptionUpdate(this.transcription, {
           totalDuration: (new Date() - this.recordingStartTime) / 1000,
-          transcribedDuration: this.audioFiles.length * this.segmentDuration,
+          transcribedDuration: this.audioFiles.length * 3,
           progress: 1.0,
           isFullTranscription: true, // 指示这是完整的转录文本
           isFinalTranscription: true // 指示这是最终的转录结果
         });
       }
     } catch (error) {
-      console.error('处理剩余文件出错:', error);
+      console.error('Error processing remaining files:', error);
     }
   }
   
@@ -357,7 +356,7 @@ export default class SpeechToTextService {
         playsInSilentModeIOS: false,
       });
     } catch (error) {
-      console.warn('重置音频模式出错:', error);
+      console.warn('Error resetting audio mode:', error);
     }
   }
   
@@ -366,28 +365,25 @@ export default class SpeechToTextService {
     try {
       const fileInfo = await FileSystem.getInfoAsync(fileUri);
       if (!fileInfo.exists || fileInfo.size === 0) {
-        console.log("文件不存在或为空:", fileUri);
         return '';
       }
-      
-      // 详细记录文件信息用于调试
-      console.log(`准备转录文件: ${fileUri}, 大小: ${fileInfo.size} 字节`);
       
       // 创建FormData用于上传
       const formData = new FormData();
       
-      // 添加文件 - 使用WAV格式正确的MIME类型
+      // 添加文件
       formData.append('file', {
         uri: fileUri,
         type: 'audio/wav',
         name: 'audio_chunk.wav'
       });
       
-      // 添加其他参数 - 使用OpenAI推荐的Whisper模型
-      formData.append('model', 'whisper-1');
+      // 添加其他参数
+      formData.append('model', 'gpt-4o-transcribe');
       formData.append('language', 'zh'); // 中文
+      formData.append('prompt', 'Transcript the speech into text. If there is no speech, return an empty string.'); // 转录
       
-      console.log(`发送转录请求，模型: whisper-1, 语言: zh`);
+      console.log(`Transcribing file: ${fileUri}`);
       
       // 发送请求到OpenAI API
       const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
@@ -406,11 +402,11 @@ export default class SpeechToTextService {
       
       // 解析JSON响应
       const data = await response.json();
-      console.log(`转录结果: ${data.text || ''}`);
+      console.log(`Transcription result: ${data.text || ''}`);
       return data.text || '';
       
     } catch (error) {
-      console.error('转录音频块出错:', error);
+      console.error('Transcribe chunk error:', error);
       return '';
     }
   }
@@ -427,8 +423,8 @@ export default class SpeechToTextService {
           this.recordingInterval = null;
         }
         
-        // 确保所有录音已停止
-        await this.ensureNoActiveRecording();
+        // 停止录音
+        await this.recording.stopAndUnloadAsync();
         
         // 重置录音相关状态
         this.recording = null;
@@ -438,8 +434,6 @@ export default class SpeechToTextService {
         this.isProcessing = false;
         this.transcription = "";
         this.recordingStartTime = null;
-        this.recordingDuration = 0;
-        this.mainAudioUri = null;
         
         console.log("录音已取消，资源已清理");
       }
@@ -473,56 +467,5 @@ export default class SpeechToTextService {
     console.log("重置转录内容");
     this.transcription = "";
     return true;
-  }
-
-  // 合并多个音频文件为一个文件
-  async mergeAudioFiles(audioFiles) {
-    if (!audioFiles || audioFiles.length === 0) return null;
-    if (audioFiles.length === 1) return audioFiles[0];
-    
-    try {
-      console.log(`开始合并 ${audioFiles.length} 个音频文件...`);
-      
-      // 创建一个临时目录用于合并操作
-      const tempDir = FileSystem.cacheDirectory + 'audio_merge/';
-      await FileSystem.makeDirectoryAsync(tempDir, { intermediates: true }).catch(e => {
-        // 目录可能已存在，忽略错误
-        console.log("创建临时目录失败，可能已存在:", e.message);
-      });
-      
-      // 创建合并后的文件名
-      const mergedFileName = `merged_${Date.now()}.wav`;
-      const mergedFileUri = `${tempDir}${mergedFileName}`;
-      
-      // 在移动端无法直接合并音频文件，我们只能保存引用
-      console.log("将使用第一个音频文件作为主要回放文件:", audioFiles[0]);
-      
-      // 保存所有音频文件URI到合并信息文件中，以便将来可能的串联播放
-      const mergeInfoFile = `${tempDir}merge_info.json`;
-      await FileSystem.writeAsStringAsync(
-        mergeInfoFile,
-        JSON.stringify({
-          files: audioFiles,
-          created: new Date().toISOString()
-        })
-      );
-      
-      console.log("已保存所有音频文件信息用于回放");
-      
-      // 创建一个复制的第一个文件，将其作为主要回放文件
-      const mainAudioFile = `${tempDir}main_audio.wav`;
-      await FileSystem.copyAsync({
-        from: audioFiles[0],
-        to: mainAudioFile
-      });
-      
-      console.log("已将第一个音频文件复制为主要回放文件:", mainAudioFile);
-      
-      return mainAudioFile;
-    } catch (error) {
-      console.error("音频合并失败:", error);
-      // 失败时返回第一个音频文件
-      return audioFiles[0];
-    }
   }
 } 
