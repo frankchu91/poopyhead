@@ -15,7 +15,8 @@ export default function DocumentBlock({
   active = false,
   autoFocus = false,
   relatedNotes = [], // 添加关联笔记参数
-  onAddEmptyNote // 新增：添加空白笔记的回调函数
+  onAddEmptyNote, // 新增：添加空白笔记的回调函数
+  isHighlighted = false // 新增：是否为当前播放高亮的块
 }) {
   const [isEditing, setIsEditing] = useState(autoFocus);
   const [editText, setEditText] = useState(block.content);
@@ -446,14 +447,26 @@ export default function DocumentBlock({
   
   // 确定块类型样式
   const getBlockStyle = () => {
-    switch(block.type) {
-      case 'transcription':
-        return styles.transcriptionBlock;
-      case 'note':
-        return styles.noteBlock;
-      default:
-        return styles.defaultBlock;
+    let blockStyle = styles.blockContainer;
+    
+    // 添加类型特定样式
+    if (block.type === 'transcription') {
+      blockStyle = {...blockStyle, ...styles.transcriptionBlock};
+    } else if (block.type === 'note') {
+      blockStyle = {...blockStyle, ...styles.noteBlock};
     }
+    
+    // 如果是活跃状态，添加活跃样式
+    if (active) {
+      blockStyle = {...blockStyle, ...styles.activeBlock};
+    }
+    
+    // 如果当前被高亮显示（播放中），添加高亮样式
+    if (isHighlighted) {
+      blockStyle = {...blockStyle, ...styles.highlightedBlock};
+    }
+    
+    return blockStyle;
   };
   
   // 如果是笔记，使用新的注释风格渲染
@@ -1269,5 +1282,11 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.5,
     shadowRadius: 3,
     elevation: 5,
+  },
+  
+  highlightedBlock: {
+    backgroundColor: 'rgba(10, 132, 255, 0.1)',
+    borderLeftWidth: 3,
+    borderLeftColor: '#0A84FF',
   },
 }); 

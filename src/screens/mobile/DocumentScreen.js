@@ -21,23 +21,28 @@ import RecordingProgressBar from '../../components/RecordingProgressBar';
 import SpeechToTextService from '../../services/SpeechToTextService';
 
 export default function DocumentScreen({ navigation, route }) {
+  // 获取文档处理逻辑
   const {
     document,
     isRecording,
     recordingTime,
-    transcriptionProgress,
     currentTranscriptionSession,
-    setDocumentTitle,
+    recordingUri,
+    isPlaying,
+    currentPlaybackTime,
+    totalPlaybackTime,
+    currentHighlightedBlockId,
+    addBlock,
     updateBlock,
     deleteBlock,
     handleTranscriptionUpdate,
-    setCurrentTranscriptionSession,
     startRecording,
     stopRecording,
     addNote,
-    exportDocument,
-    shareDocument,
-    isLoading
+    playRecording,
+    pausePlayback,
+    stopPlayback,
+    setDocumentTitle
   } = useDocumentLogic();
   
   // 本地状态
@@ -228,9 +233,16 @@ export default function DocumentScreen({ navigation, route }) {
         stopRecording();
         
         // 后台继续处理转录，并更新到当前块
-        speechToTextRef.current.stopRecording().catch(error => {
+        const result = await speechToTextRef.current.stopRecording().catch(error => {
           console.error("转录错误:", error);
+          return { text: '', audioUri: null, allAudioFiles: [] };
         });
+        
+        // 更新录音信息
+        if (result) {
+          // 完全停止录音，传递所有录音文件信息
+          stopRecording(result);
+        }
       } else {
         // 开始录音
         console.log("开始录音...");
@@ -314,6 +326,26 @@ export default function DocumentScreen({ navigation, route }) {
     return `${minutes}:${remainingSeconds < 10 ? '0' : ''}${remainingSeconds}`;
   };
   
+  // 当高亮块改变时滚动到该块
+  useEffect(() => {
+    if (currentHighlightedBlockId) {
+      scrollToBlock(currentHighlightedBlockId);
+    }
+  }, [currentHighlightedBlockId]);
+  
+  // 创建录音控制实例
+  useEffect(() => {
+    speechToTextRef.current = new SpeechToTextService((text, progressInfo) => {
+      handleTranscriptionUpdate(text, progressInfo);
+    });
+    
+    return () => {
+      if (speechToTextRef.current && speechToTextRef.current.isRecording) {
+        speechToTextRef.current.stopRecording();
+      }
+    };
+  }, []);
+  
   return (
     <SafeAreaView style={styles.container}>
       {/* 标题栏 */}
@@ -339,6 +371,42 @@ export default function DocumentScreen({ navigation, route }) {
           <Ionicons name="ellipsis-horizontal" size={24} color="#000" />
         </TouchableOpacity>
       </View>
+      
+      {/* 音频播放控制器 - 仅在有录音时显示 */}
+      {recordingUri && (
+        <View style={styles.playbackController}>
+          <TouchableOpacity 
+            style={styles.playbackButton}
+            onPress={isPlaying ? pausePlayback : playRecording}
+          >
+            <Ionicons 
+              name={isPlaying ? "pause" : "play"} 
+              size={24} 
+              color="#fff" 
+            />
+          </TouchableOpacity>
+          
+          <View style={styles.playbackProgressContainer}>
+            <View 
+              style={[
+                styles.playbackProgress, 
+                { width: `${(currentPlaybackTime / (totalPlaybackTime || document.metadata.duration || 1)) * 100}%` }
+              ]}
+            />
+          </View>
+          
+          <Text style={styles.playbackTime}>
+            {formatTime(Math.round(currentPlaybackTime))}
+          </Text>
+          
+          <TouchableOpacity 
+            style={styles.playbackStopButton}
+            onPress={stopPlayback}
+          >
+            <Ionicons name="stop" size={18} color="#fff" />
+          </TouchableOpacity>
+        </View>
+      )}
       
       {/* 使用KeyboardAvoidingView包裹整个内容区域 */}
       <KeyboardAvoidingView
@@ -372,6 +440,7 @@ export default function DocumentScreen({ navigation, route }) {
                   onAddNote={handleAddNoteToSelection}
                   onAddEmptyNote={handleAddEmptyNote}
                   active={currentTranscriptionSession.blockId === block.id}
+                  isHighlighted={currentHighlightedBlockId === block.id}
                   autoFocus={block.id === newNoteId}
                   relatedNotes={getRelatedNotes(block.id)}
                 />
@@ -580,5 +649,46 @@ const styles = StyleSheet.create({
     shadowRadius: 1,
     elevation: 1,
     zIndex: 100,
+  },
+  playbackController: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+  },
+  playbackButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#0A84FF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 8,
+  },
+  playbackProgressContainer: {
+    flex: 1,
+    height: 20,
+    backgroundColor: '#f0f0f0',
+    borderRadius: 10,
+    marginHorizontal: 8,
+  },
+  playbackProgress: {
+    height: '100%',
+    backgroundColor: '#0A84FF',
+    borderRadius: 10,
+  },
+  playbackTime: {
+    color: '#000',
+    marginLeft: 8,
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  playbackStopButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#0A84FF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 8,
   },
 }); 
