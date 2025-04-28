@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Audio, RecordingOptionsPresets } from 'expo-av';
 import { Vibration, Platform } from 'react-native';
+import AISummaryService from '../services/AISummaryService';
 
 export default function useDocumentLogic() {
   // 文档数据模型
@@ -21,6 +22,10 @@ export default function useDocumentLogic() {
   const [transcribedDuration, setTranscribedDuration] = useState(0);
   const [totalDuration, setTotalDuration] = useState(0);
   const [transcriptionProgress, setTranscriptionProgress] = useState(0);
+  
+  // AI总结状态
+  const [summaryData, setSummaryData] = useState(null);
+  const [isSummaryLoading, setIsSummaryLoading] = useState(false);
   
   // 当前转录会话
   const [currentTranscriptionSession, setCurrentTranscriptionSession] = useState({
@@ -327,6 +332,45 @@ export default function useDocumentLogic() {
     return text;
   };
   
+  // 生成AI总结
+  const generateSummary = async () => {
+    if (document.blocks.length === 0) {
+      return null;
+    }
+    
+    setIsSummaryLoading(true);
+    try {
+      // 将文档内容转换为文本
+      let documentContent = '';
+      document.blocks.forEach(block => {
+        if (block.type === 'transcription') {
+          documentContent += `[转录] ${block.content}\n\n`;
+        } else if (block.type === 'note') {
+          documentContent += `[笔记] ${block.content}\n\n`;
+        }
+      });
+      
+      // 调用AI总结服务
+      const summary = await AISummaryService.generateSummary(
+        documentContent, 
+        document.metadata.title
+      );
+      
+      setSummaryData(summary);
+      return summary;
+    } catch (error) {
+      console.error('生成总结失败:', error);
+      return null;
+    } finally {
+      setIsSummaryLoading(false);
+    }
+  };
+  
+  // 重置总结
+  const resetSummary = () => {
+    setSummaryData(null);
+  };
+  
   return {
     // 状态
     document,
@@ -336,6 +380,8 @@ export default function useDocumentLogic() {
     totalDuration,
     transcriptionProgress,
     currentTranscriptionSession,
+    summaryData,
+    isSummaryLoading,
     
     // 方法
     setDocument,
@@ -348,6 +394,8 @@ export default function useDocumentLogic() {
     startRecording,
     stopRecording,
     addNote,
-    exportAsText
+    exportAsText,
+    generateSummary,
+    resetSummary
   };
 } 

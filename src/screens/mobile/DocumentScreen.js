@@ -15,10 +15,12 @@ import {
   Dimensions
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
 import useDocumentLogic from '../../core/useDocumentLogic';
 import DocumentBlock from '../../components/document/DocumentBlock';
 import RecordingProgressBar from '../../components/RecordingProgressBar';
 import SpeechToTextService from '../../services/SpeechToTextService';
+import SummaryModal from '../../components/document/SummaryModal';
 
 export default function DocumentScreen({ navigation, route }) {
   const {
@@ -35,9 +37,11 @@ export default function DocumentScreen({ navigation, route }) {
     startRecording,
     stopRecording,
     addNote,
-    exportDocument,
-    shareDocument,
-    isLoading
+    exportAsText,
+    summaryData,
+    isSummaryLoading,
+    generateSummary,
+    resetSummary
   } = useDocumentLogic();
   
   // 本地状态
@@ -45,6 +49,7 @@ export default function DocumentScreen({ navigation, route }) {
   const [isProcessingRecording, setIsProcessingRecording] = useState(false);
   const [newNoteId, setNewNoteId] = useState(null);
   const { documentId } = route.params || { documentId: 'test-doc-id' };
+  const [showSummary, setShowSummary] = useState(false);
   
   // Refs
   const scrollViewRef = useRef(null);
@@ -300,11 +305,46 @@ export default function DocumentScreen({ navigation, route }) {
       "选项",
       "选择操作",
       [
-        { text: "导出文档", onPress: () => {} },
-        { text: "分享", onPress: () => {} },
+        { 
+          text: "生成AI总结", 
+          onPress: handleShowSummary 
+        },
+        { 
+          text: "导出文档", 
+          onPress: () => {
+            const text = exportAsText();
+            Alert.alert("文档内容", text, [
+              { text: "复制到剪贴板", onPress: async () => {
+                await Clipboard.setStringAsync(text);
+                Alert.alert("成功", "文档内容已复制到剪贴板");
+              }},
+              { text: "关闭", style: "cancel" }
+            ]);
+          } 
+        },
         { text: "取消", style: "cancel" }
       ]
     );
+  };
+  
+  // 显示AI总结
+  const handleShowSummary = async () => {
+    if (document.blocks.length === 0) {
+      Alert.alert("无法生成总结", "文档中没有内容可供总结");
+      return;
+    }
+    
+    setShowSummary(true);
+    
+    if (!summaryData && !isSummaryLoading) {
+      // 没有现有总结数据且没有正在加载，生成新的总结
+      generateSummary();
+    }
+  };
+  
+  // 关闭总结弹窗
+  const handleCloseSummary = () => {
+    setShowSummary(false);
   };
   
   // 添加格式化时间的函数
@@ -450,6 +490,14 @@ export default function DocumentScreen({ navigation, route }) {
           </View>
         </View>
       </KeyboardAvoidingView>
+      
+      {/* AI总结弹窗 */}
+      <SummaryModal
+        visible={showSummary}
+        onClose={handleCloseSummary}
+        summary={summaryData}
+        isLoading={isSummaryLoading}
+      />
     </SafeAreaView>
   );
 }
