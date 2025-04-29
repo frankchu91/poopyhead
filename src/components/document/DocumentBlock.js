@@ -348,7 +348,7 @@ export default function DocumentBlock({
             editable={false}
             contextMenuHidden={true}
             onSelectionChange={handleSelectionChange}
-            selectionColor={'rgba(10, 132, 255, 0.3)'}
+            selectionColor={'rgba(100, 200, 255, 0.5)'} // 调整选择高亮颜色，让它在黑底上更可见
           />
           
           {/* 添加全局触摸移动事件捕获层 */}
@@ -438,7 +438,7 @@ export default function DocumentBlock({
           editable={false}
           contextMenuHidden={true}
           onSelectionChange={handleSelectionChange}
-          selectionColor={'rgba(10, 132, 255, 0.3)'}
+          selectionColor={'rgba(100, 200, 255, 0.5)'} // 调整选择高亮颜色，让它在黑底上更可见
         />
       </View>
     );
@@ -587,7 +587,7 @@ export default function DocumentBlock({
           style={[styles.menuButton, styles.transcriptionMenuButton]}
           onPress={showMenu}
         >
-          <Ionicons name="ellipsis-vertical" size={16} color="#666" />
+          <Ionicons name="ellipsis-vertical" size={16} color="#aaa" />
         </TouchableOpacity>
         
         {/* 说话者信息和时间戳 */}
@@ -777,12 +777,6 @@ export default function DocumentBlock({
           )}
         </View>
       )}
-      
-      {active && (
-        <View style={styles.activeIndicator}>
-          <Text style={styles.activeText}>正在转录...</Text>
-        </View>
-      )}
     </View>
   );
 }
@@ -880,12 +874,12 @@ const styles = StyleSheet.create({
   transcriptionContainer: {
     marginVertical: 12,
     padding: 16,
-    backgroundColor: '#f8f9fa',
+    backgroundColor: 'transparent', // 改为透明背景，让整体屏幕背景透出
     borderRadius: 8,
     borderLeftWidth: 3,
-    borderLeftColor: '#6c757d',
+    borderLeftColor: '#444', // 更深色的边框
     position: 'relative',
-    paddingTop: 12, // 减小顶部间距，让布局更紧凑
+    paddingTop: 12,
   },
   transcriptionHeader: {
     flexDirection: 'row',
@@ -918,47 +912,33 @@ const styles = StyleSheet.create({
   speakerName: {
     fontWeight: 'bold',
     fontSize: 14,
-    color: '#333',
+    color: '#ffffff', // 保持白色文字
     marginRight: 8,
   },
   timestamp: {
     fontSize: 12,
-    color: '#888',
+    color: '#aaaaaa', // 更亮的灰色，在深色背景上更易读
   },
   transcriptionContent: {
     fontSize: 15,
     lineHeight: 22,
-    color: '#333',
+    color: '#ffffff', // 保持白色文字
     marginTop: 4,
     backgroundColor: 'transparent',
     padding: 0,
     textAlignVertical: 'top',
   },
-  activeIndicator: {
-    position: 'absolute',
-    bottom: -10,
-    right: 20,
-    backgroundColor: 'rgba(40, 167, 69, 0.8)',
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: 12,
-  },
-  activeText: {
-    color: 'white',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
   
-  // 高亮文本样式
+  // 高亮文本样式 - 调整为在黑底上更易见的颜色
   highlightedText: {
-    backgroundColor: 'rgba(255, 222, 121, 0.5)', // 加深一点黄色高亮背景
+    backgroundColor: 'rgba(255, 193, 7, 0.4)', // 更鲜亮的黄色，在黑底上更醒目
     borderRadius: 3,
     paddingHorizontal: 1,
-    textDecorationLine: 'underline', // 添加下划线，使高亮更明显
-    textDecorationColor: '#F2994A', // 更明显的橙色下划线
-    textDecorationStyle: 'solid', // 实线下划线
-    color: '#000', // 确保文本颜色足够深
-    fontWeight: '500', // 稍微加粗
+    textDecorationLine: 'underline',
+    textDecorationColor: '#FFC107', // 亮黄色下划线
+    textDecorationStyle: 'solid',
+    color: '#FFEB3B', // 明亮的黄色文本
+    fontWeight: '500',
   },
   hiddenInput: {
     position: 'absolute',
@@ -970,34 +950,48 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   
-  // 新的笔记样式 - 设计成注释风格
+  // 全新设计的笔记样式 - 更现代简洁的设计
   noteContainer: {
-    marginVertical: 4,
-    marginLeft: 32, // 增加缩进，更明显的从属关系
+    marginVertical: 8,
+    marginLeft: 24, // 保持缩进，区分于转录块
     marginBottom: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 8,
-    borderLeftWidth: 2, // 细边框
-    backgroundColor: 'rgba(240, 248, 255, 0.6)', // 更轻的背景色
-    borderLeftColor: '#90CAF9', // 保持蓝色以区分
-    maxWidth: '90%', // 更窄的宽度，增强从属感
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderLeftWidth: 2, // 使用细边框
+    borderLeftColor: '#90CAF9', // 使用绿色边框做区分
+    backgroundColor: 'rgba(245, 245, 245, 0.1)', // 半透明背景
+    maxWidth: '92%',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
-    shadowRadius: 1,
-    elevation: 1, // 轻微的阴影，增加层次感
+    shadowRadius: 2,
+    elevation: 1, // 轻微阴影
   },
   noteContentWrapper: {
     position: 'relative',
   },
   noteContent: {
-    fontSize: 14, // 适当的字体大小
-    lineHeight: 18,
-    fontStyle: 'italic', // 斜体，区分于转录
-    color: '#555', // 字体颜色深一些，增强可读性
-    paddingRight: 30, // 为右侧按钮预留空间，改小一点
-    marginBottom: 8, // 增加一点底部间距，为可能的添加笔记按钮留空间
+    fontSize: 14.5,
+    lineHeight: 20,
+    fontStyle: 'normal',
+    color: '#dddddd', // 浅色文字，在深色背景上更易读
+    paddingRight: 30,
+    marginBottom: 4,
+  },
+  referencedTextContainer: {
+    marginBottom: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    backgroundColor: 'rgba(76, 175, 80, 0.1)', // 半透明绿色背景
+    borderLeftWidth: 2,
+    borderLeftColor: '#4CAF50', // 绿色边框
+    borderRadius: 4,
+  },
+  referencedText: {
+    fontSize: 13,
+    fontStyle: 'italic',
+    color: '#bbbbbb', // 浅色文字
   },
   noteActions: {
     position: 'absolute', 
@@ -1066,20 +1060,6 @@ const styles = StyleSheet.create({
     width: 1,
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
   },
-  referencedTextContainer: {
-    marginBottom: 8,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    backgroundColor: 'rgba(255, 242, 204, 0.4)', // 更轻的黄色背景
-    borderLeftWidth: 2,
-    borderLeftColor: '#FFCC80', // 柔和的橙色
-    borderRadius: 4,
-  },
-  referencedText: {
-    fontSize: 13,
-    fontStyle: 'italic',
-    color: '#666',
-  },
   transcriptionAddButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1100,7 +1080,7 @@ const styles = StyleSheet.create({
     right: 6,
     padding: 6,
     zIndex: 10,
-    backgroundColor: 'rgba(245, 245, 245, 0.9)',
+    backgroundColor: 'rgba(70, 70, 70, 0.7)', // 深色半透明背景
     borderRadius: 14,
     width: 28,
     height: 28,
@@ -1110,6 +1090,7 @@ const styles = StyleSheet.create({
   transcriptionMenuButton: {
     top: 2,
     right: 0,
+    backgroundColor: 'rgba(70, 70, 70, 0.7)', // 在黑底上使用更深的半透明背景
   },
   actionMenu: {
     position: 'absolute',

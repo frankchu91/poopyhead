@@ -17,10 +17,13 @@ export default class SpeechToTextService {
   constructor(onTranscriptionUpdate) {
     this.recording = null;
     this.isRecording = false;
+    this.isPaused = false;
     this.recordingInterval = null;
     this.onTranscriptionUpdate = onTranscriptionUpdate;
     this.transcription = "";
     this.recordingStartTime = null;
+    this.totalPausedTime = 0;
+    this.pauseStartTime = null;
     
     // 添加文件收集器
     this.audioFiles = [];
@@ -121,7 +124,7 @@ export default class SpeechToTextService {
   
   // 保存当前录音段，并准备新段
   async saveCurrentSegment() {
-    if (!this.isRecording || !this.recording) return;
+    if (!this.isRecording || !this.recording || this.isPaused) return;
     
     try {
       // 暂停当前录音
@@ -267,6 +270,7 @@ export default class SpeechToTextService {
     
     console.log("Stopping recording...");
     this.isRecording = false;
+    this.isPaused = false;
     
     // 清除定时器
     if (this.recordingInterval) {
@@ -467,5 +471,84 @@ export default class SpeechToTextService {
     console.log("重置转录内容");
     this.transcription = "";
     return true;
+  }
+
+  // 新增: 暂停录音
+  async pauseRecording() {
+    if (!this.isRecording || !this.recording || this.isPaused) return false;
+    
+    try {
+      console.log("暂停录音...");
+      
+      // 暂停录音
+      await this.recording.pauseAsync();
+      
+      // 保存当前段落到文件列表
+      const uri = this.recording.getURI();
+      if (uri) {
+        console.log("将当前段落添加到队列进行转录:", uri);
+        this.audioFiles.push(uri);
+      }
+      
+      // 清除录音段保存定时器
+      if (this.recordingInterval) {
+        clearInterval(this.recordingInterval);
+        this.recordingInterval = null;
+      }
+      
+      // 记录暂停开始时间
+      this.isPaused = true;
+      this.pauseStartTime = new Date();
+      
+      // 确保所有已录制的段落都被处理
+      if (!this.isProcessing && this.processingIndex < this.audioFiles.length) {
+        console.log("暂停时触发处理已录制段落");
+        this.processAudioFiles();
+      }
+      
+      return true;
+    } catch (error) {
+      console.error("暂停录音时出错:", error);
+      return false;
+    }
+  }
+  
+  // 新增: 恢复录音
+  async resumeRecording() {
+    if (!this.isRecording || !this.recording || !this.isPaused) return false;
+    
+    try {
+      console.log("恢复录音...");
+      
+      // 恢复录音
+      await this.recording.startAsync();
+      
+      // 计算暂停的时间
+      if (this.pauseStartTime) {
+        const pauseDuration = (new Date() - this.pauseStartTime) / 1000;
+        this.totalPausedTime += pauseDuration;
+        this.pauseStartTime = null;
+      }
+      
+      // 重新设置定时器
+      this.recordingInterval = setInterval(async () => {
+        if (this.isRecording && !this.isPaused) {
+          await this.saveCurrentSegment();
+        }
+      }, 3000);
+      
+      this.isPaused = false;
+      
+      // 确保继续处理任何剩余的段落
+      if (!this.isProcessing && this.processingIndex < this.audioFiles.length) {
+        console.log("恢复时继续处理未完成的段落");
+        this.processAudioFiles();
+      }
+      
+      return true;
+    } catch (error) {
+      console.error("恢复录音时出错:", error);
+      return false;
+    }
   }
 } 

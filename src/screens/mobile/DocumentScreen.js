@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
+import { LinearGradient } from 'expo-linear-gradient';
 import useDocumentLogic from '../../core/useDocumentLogic';
 import DocumentBlock from '../../components/document/DocumentBlock';
 import RecordingProgressBar from '../../components/RecordingProgressBar';
@@ -36,12 +37,15 @@ export default function DocumentScreen({ navigation, route }) {
     setCurrentTranscriptionSession,
     startRecording,
     stopRecording,
+    pauseRecording,
+    resumeRecording,
     addNote,
     exportAsText,
     summaryData,
     isSummaryLoading,
     generateSummary,
-    resetSummary
+    resetSummary,
+    isPaused
   } = useDocumentLogic();
   
   // 本地状态
@@ -265,6 +269,47 @@ export default function DocumentScreen({ navigation, route }) {
     }
   };
   
+  // 处理暂停/继续录音
+  const togglePause = async () => {
+    if (!isRecording || isProcessingRecording) return;
+    
+    try {
+      if (isPaused) {
+        // 恢复录音
+        // 1. 先恢复UI计时器
+        const timerResumed = resumeRecording();
+        if (timerResumed) {
+          // 2. 再恢复录音服务
+          const success = await speechToTextRef.current.resumeRecording();
+          if (!success) {
+            // 如果恢复录音失败，也要停止计时器
+            pauseRecording();
+            console.error("恢复录音失败");
+          }
+        } else {
+          console.error("恢复计时器失败");
+        }
+      } else {
+        // 暂停录音
+        // 1. 先暂停UI计时器
+        const timerPaused = pauseRecording();
+        if (timerPaused) {
+          // 2. 再暂停录音服务
+          const success = await speechToTextRef.current.pauseRecording();
+          if (!success) {
+            // 如果暂停录音失败，也要恢复计时器
+            resumeRecording();
+            console.error("暂停录音失败");
+          }
+        } else {
+          console.error("暂停计时器失败");
+        }
+      }
+    } catch (error) {
+      console.error("暂停/恢复录音时出错:", error);
+    }
+  };
+  
   // 处理发送笔记
   const handleSendNote = () => {
     if (!noteText.trim()) return;
@@ -362,7 +407,7 @@ export default function DocumentScreen({ navigation, route }) {
           style={styles.backButton}
           onPress={() => navigation.goBack()}
         >
-          <Ionicons name="chevron-back" size={24} color="#000" />
+          <Ionicons name="chevron-back" size={24} color="#fff" />
         </TouchableOpacity>
         
         <TextInput
@@ -370,14 +415,37 @@ export default function DocumentScreen({ navigation, route }) {
           value={document.metadata.title}
           onChangeText={setDocumentTitle}
           placeholder="未命名转录"
+          placeholderTextColor="#8E8E93"
         />
         
-        <TouchableOpacity 
-          style={styles.menuButton}
-          onPress={showMenu}
-        >
-          <Ionicons name="ellipsis-horizontal" size={24} color="#000" />
-        </TouchableOpacity>
+        <View style={styles.headerButtons}>
+          <TouchableOpacity 
+            style={styles.summaryButtonContainer}
+            onPress={handleShowSummary}
+          >
+            <LinearGradient
+              colors={['#0A7AFF', '#0A84FF', '#3A9BFF']}
+              style={styles.summaryButton}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+            >
+              <Ionicons name="flash-outline" size={14} color="#fff" style={styles.summaryButtonIcon} />
+              <Text style={styles.summaryButtonText}>AI 摘要</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={styles.headerButtonWithLabel}
+            onPress={() => {
+              const text = exportAsText();
+              Clipboard.setStringAsync(text);
+              Alert.alert("已复制", "文档内容已复制到剪贴板");
+            }}
+          >
+            <Ionicons name="share-outline" size={22} color="#0A84FF" />
+            <Text style={styles.headerButtonLabel}>导出</Text>
+          </TouchableOpacity>
+        </View>
       </View>
       
       {/* 使用KeyboardAvoidingView包裹整个内容区域 */}
@@ -435,37 +503,45 @@ export default function DocumentScreen({ navigation, route }) {
             </TouchableOpacity>
           )}
           
-          <View style={styles.inputWrapper}>
-            <TouchableOpacity 
-              style={[
-                styles.recordButton,
-                isRecording && styles.recordingActive,
-                isProcessingRecording && styles.recordingProcessing
-              ]}
-              onPress={toggleRecording}
-              disabled={isProcessingRecording}
-            >
-              {isProcessingRecording ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <>
-                  {isRecording ? (
-                    <View style={styles.recordingContainer}>
-                      <Ionicons name="stop-circle" size={24} color="#fff" />
-                      <Text style={styles.recordingTime}>
-                        {formatTime(recordingTime)}
-                      </Text>
-                    </View>
+          {/* 悬浮录音控制面板 */}
+          {(isRecording || isProcessingRecording) && (
+            <View style={styles.floatingRecordPanel}>
+              <View style={styles.recordingStatusContainer}>
+                <View style={[styles.recordingDot, isPaused && styles.recordingDotPaused]} />
+                <Text style={styles.recordingStatusText}>
+                  {formatTime(recordingTime)} {isPaused ? '已暂停' : '录音中'}
+                </Text>
+              </View>
+              
+              <View style={styles.recordingControls}>
+                <TouchableOpacity
+                  style={styles.recordingControlButton}
+                  onPress={togglePause}
+                  disabled={isProcessingRecording}
+                >
+                  {isPaused ? (
+                    <Ionicons name="play" size={22} color="#fff" />
                   ) : (
-                    <Ionicons name="mic" size={24} color="#0A84FF" />
+                    <Ionicons name="pause" size={22} color="#fff" />
                   )}
-                </>
-              )}
-            </TouchableOpacity>
-            
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[styles.recordingControlButton, styles.stopButton]}
+                  onPress={toggleRecording}
+                  disabled={isProcessingRecording}
+                >
+                  <Ionicons name="power" size={22} color="#FF3B30" />
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+          
+          <View style={styles.inputWrapper}>
             <TextInput
               style={styles.noteInput}
               placeholder="添加笔记..."
+              placeholderTextColor="#8E8E93"
               value={noteText}
               onChangeText={setNoteText}
               multiline
@@ -484,12 +560,26 @@ export default function DocumentScreen({ navigation, route }) {
               <Ionicons 
                 name="send" 
                 size={24} 
-                color={noteText.trim() ? "#0A84FF" : "#999"} 
+                color={noteText.trim() ? "#0A84FF" : "#666"} 
               />
             </TouchableOpacity>
           </View>
         </View>
       </KeyboardAvoidingView>
+      
+      {/* 录音浮动按钮 - 只在未录音状态显示 */}
+      {!isRecording && !isProcessingRecording && (
+        <TouchableOpacity 
+          style={styles.floatingRecordButton}
+          onPress={toggleRecording}
+          activeOpacity={0.8}
+        >
+          <View style={styles.floatingRecordingContainer}>
+            <Ionicons name="mic" size={32} color="#fff" />
+            <Text style={styles.floatingRecordingLabel}>录音</Text>
+          </View>
+        </TouchableOpacity>
+      )}
       
       {/* AI总结弹窗 */}
       <SummaryModal
@@ -505,7 +595,7 @@ export default function DocumentScreen({ navigation, route }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#1C1C1E',
   },
   header: {
     flexDirection: 'row',
@@ -513,7 +603,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: '#2C2C2E',
+    backgroundColor: '#1C1C1E',
   },
   backButton: {
     padding: 4,
@@ -524,16 +615,27 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginHorizontal: 16,
     padding: 0,
+    color: '#fff',
   },
-  menuButton: {
-    padding: 4,
+  headerButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerButtonWithLabel: {
+    alignItems: 'center',
+    marginLeft: 12,
+  },
+  headerButtonLabel: {
+    fontSize: 11,
+    marginTop: 2,
+    color: '#0A84FF',
   },
   keyboardAvoidingContainer: {
     flex: 1,
   },
   documentContent: {
     flex: 1,
-    backgroundColor: '#f5f5f7',
+    backgroundColor: '#1C1C1E',
   },
   documentContentContainer: {
     padding: 16,
@@ -547,16 +649,16 @@ const styles = StyleSheet.create({
   },
   emptyDocumentText: {
     fontSize: 16,
-    color: '#999',
+    color: '#8E8E93',
     textAlign: 'center',
   },
   inputContainer: {
     borderTopWidth: 1,
-    borderTopColor: '#eee',
-    backgroundColor: '#fff',
+    borderTopColor: '#2C2C2E',
+    backgroundColor: '#1C1C1E',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.2,
     shadowRadius: 3,
     elevation: 4,
   },
@@ -567,12 +669,13 @@ const styles = StyleSheet.create({
   },
   noteInput: {
     flex: 1,
-    backgroundColor: '#f0f0f0',
+    backgroundColor: '#2C2C2E',
     borderRadius: 20,
     padding: 12,
     fontSize: 16,
     maxHeight: 100,
     marginLeft: 0,
+    color: '#fff',
   },
   addNoteButton: {
     marginHorizontal: 8,
@@ -582,7 +685,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#f0f0f0',
+    backgroundColor: '#2C2C2E',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 8,
@@ -606,6 +709,90 @@ const styles = StyleSheet.create({
   recordingProcessing: {
     backgroundColor: '#0A84FF',
   },
+  
+  // 新增: 浮动录音控制面板
+  floatingRecordPanel: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#2C2C2E',
+    borderRadius: 25,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    marginHorizontal: 12,
+    marginBottom: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 6,
+  },
+  recordingStatusContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  recordingDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#6366F1',
+    marginRight: 8,
+  },
+  recordingDotPaused: {
+    backgroundColor: '#9CA3AF',
+  },
+  recordingStatusText: {
+    fontSize: 14,
+    color: '#fff',
+    fontWeight: '500',
+  },
+  recordingControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  recordingControlButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 12,
+    backgroundColor: 'transparent',
+  },
+  stopButton: {
+    backgroundColor: 'transparent',
+  },
+  
+  // 修改: 浮动录音按钮样式
+  floatingRecordButton: {
+    position: 'absolute',
+    bottom: 90,
+    alignSelf: 'center',
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: '#FF3B30',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    elevation: 10,
+    zIndex: 100,
+  },
+  floatingRecordingContainer: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  floatingRecordingLabel: {
+    color: '#fff',
+    marginTop: 2,
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  
   keyboardDismissButton: {
     position: 'absolute',
     top: -28,
@@ -616,17 +803,44 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 12,
     borderBottomLeftRadius: 0,
     borderBottomRightRadius: 0,
-    backgroundColor: '#f0f0f0',
+    backgroundColor: '#2C2C2E',
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
     borderBottomWidth: 0,
-    borderColor: '#e0e0e0',
+    borderColor: '#3C3C3E',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -1 },
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.2,
     shadowRadius: 1,
     elevation: 1,
     zIndex: 100,
+  },
+  summaryButtonContainer: {
+    marginRight: 8,
+    borderRadius: 20,
+    shadowColor: '#0A84FF',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  summaryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    borderWidth: 0.5,
+    borderColor: 'rgba(255,255,255,0.5)',
+  },
+  summaryButtonIcon: {
+    marginRight: 4,
+  },
+  summaryButtonText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
   },
 }); 

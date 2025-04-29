@@ -22,6 +22,7 @@ export default function useDocumentLogic() {
   const [transcribedDuration, setTranscribedDuration] = useState(0);
   const [totalDuration, setTotalDuration] = useState(0);
   const [transcriptionProgress, setTranscriptionProgress] = useState(0);
+  const [isPaused, setIsPaused] = useState(false);
   
   // AI总结状态
   const [summaryData, setSummaryData] = useState(null);
@@ -230,6 +231,7 @@ export default function useDocumentLogic() {
       
       setIsRecording(true);
       setRecordingTime(0);
+      setIsPaused(false);
       
       // 开始计时
       timerRef.current = setInterval(() => {
@@ -248,12 +250,45 @@ export default function useDocumentLogic() {
     }
   };
   
+  // 暂停录音
+  const pauseRecording = () => {
+    if (!isRecording || !timerRef.current) return false;
+    
+    // 清除定时器
+    clearInterval(timerRef.current);
+    timerRef.current = null;
+    
+    // 设置暂停状态
+    setIsPaused(true);
+    
+    return true;
+  };
+  
+  // 恢复录音
+  const resumeRecording = () => {
+    if (!isRecording || timerRef.current || !isPaused) return false;
+    
+    // 重新开始计时
+    timerRef.current = setInterval(() => {
+      setRecordingTime(prev => prev + 1);
+    }, 1000);
+    
+    // 更新暂停状态
+    setIsPaused(false);
+    
+    return true;
+  };
+  
   // 结束录音
   const stopRecording = () => {
     if (!isRecording) return;
     
     try {
-      clearInterval(timerRef.current);
+      // 确保定时器被清除
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
       
       // 检查当前转录块
       if (currentTranscriptionSession.blockId) {
@@ -285,6 +320,7 @@ export default function useDocumentLogic() {
       
       setIsRecording(false);
       setRecordingTime(0);
+      setIsPaused(false);
       
       // 设置标志，指示下次录音时应该创建新的转录块
       setShouldCreateNewBlock(true);
@@ -382,6 +418,7 @@ export default function useDocumentLogic() {
     currentTranscriptionSession,
     summaryData,
     isSummaryLoading,
+    isPaused,
     
     // 方法
     setDocument,
@@ -393,6 +430,8 @@ export default function useDocumentLogic() {
     setCurrentTranscriptionSession,
     startRecording,
     stopRecording,
+    pauseRecording,
+    resumeRecording,
     addNote,
     exportAsText,
     generateSummary,
