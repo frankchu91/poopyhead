@@ -19,7 +19,6 @@ import * as Clipboard from 'expo-clipboard';
 import { LinearGradient } from 'expo-linear-gradient';
 import useDocumentLogic from '../../core/useDocumentLogic';
 import DocumentBlock from '../../components/document/DocumentBlock';
-import RecordingProgressBar from '../../components/RecordingProgressBar';
 import SpeechToTextService from '../../services/SpeechToTextService';
 import SummaryModal from '../../components/document/SummaryModal';
 

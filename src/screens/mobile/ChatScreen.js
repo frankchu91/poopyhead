@@ -24,7 +24,6 @@ import { Ionicons } from '@expo/vector-icons';
 import useChatLogic from '../../core/useChatLogic';
 import MessageBubble from '../../components/mobile/MessageBubble';
 import SpeechToTextService from '../../services/SpeechToTextService';
-import RecordingProgressBar from '../../components/RecordingProgressBar';
 
 const INPUT_ACCESSORY_ID = 'uniqueInputAccessoryId';
 
@@ -794,7 +793,7 @@ export default function MobileChatScreen({ navigation, route }) {
       console.log("用户发送了消息，重置转录状态，消息ID:", messageId);
       
       // 自动滚动到底部
-      setTimeout(() => scrollToBottom(false), 100);
+    setTimeout(() => scrollToBottom(false), 100);
     }
   };
 
@@ -1010,15 +1009,6 @@ export default function MobileChatScreen({ navigation, route }) {
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
         style={{ backgroundColor: '#1A1A1A' }}
       >
-        {isRecording && (
-          <RecordingProgressBar 
-            isRecording={isRecording}
-            duration={recordingDuration}
-            transcriptionProgress={transcriptionProgress}
-            transcribedSeconds={transcribedDuration}
-            totalSeconds={totalDuration}
-          />
-        )}
         
         {!editingMessage ? (
           <View style={[styles.inputContainer, { backgroundColor: '#1A1A1A', borderTopWidth: 0.5, borderTopColor: '#333' }]}>

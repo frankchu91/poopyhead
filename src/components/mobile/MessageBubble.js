@@ -193,11 +193,16 @@ export default function MessageBubble({
             </View>
           </PinchGestureHandler>
           
-          {message.isSpeaker && (
+          {message.isSpeaker && ( // 这是一个条件渲染表达式。只有当消息对象的 isSpeaker 属性为 true 时，才会渲染这个部分
             <View style={styles.speakerContainer}>
               <View style={styles.speakerAvatar}>
+              {/* message.speakerName?.charAt(0) 尝试获取说话者名称的第一个字符（初始字母）
+                ?. 是可选链操作符，如果 speakerName 是 undefined 或 null，不会报错
+                || 'A' 是一个后备选项，如果无法获取初始字母（即 speakerName 不存在或为空），则显示字母 'A'
+                这个文本会显示在头像容器中，作为说话者的标识 */}
                 <Text style={styles.speakerInitial}>{message.speakerName?.charAt(0) || 'A'}</Text>
               </View>
+              {/* 显示完整的说话者名称|| 'Speaker A' 提供默认值，如果 speakerName 不存在，则显示 "Speaker A" */}
               <Text style={styles.speakerName}>{message.speakerName || 'Speaker A'}</Text>
             </View>
           )}
