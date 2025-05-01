@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { View, Text, TextInput, StyleSheet, TouchableOpacity, Modal, Clipboard, UIManager, findNodeHandle, TouchableWithoutFeedback, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme, THEMES } from '../../context/ThemeContext';
 
 // 启用布局动画测量 (仅适用于Android)
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -42,6 +43,10 @@ export default function DocumentBlock({
   const textContainerRef = useRef(null);
   // 添加菜单按钮引用
   const menuButtonRef = useRef(null);
+  
+  // 添加主题相关代码
+  const { theme } = useTheme();
+  const isDark = theme === THEMES.DARK;
   
   // 当autoFocus改变时，更新编辑状态
   useEffect(() => {
@@ -367,7 +372,13 @@ export default function DocumentBlock({
     // 创建一个视图，使用Text组件渲染高亮部分和普通部分
     return (
       <View>
-        <Text style={styles.transcriptionContent}>
+        <Text style={[
+          styles.transcriptionContent, 
+          { color: isDark ? '#ffffff' : '#000000' }
+        ]} 
+          onLongPress={handleContentLongPress}
+          onPress={clearAndHideSelection}
+        >
           {block.content.split('').map((char, index) => {
             // 检查此字符是否属于任何引用文本
             const isHighlighted = notesReferencingThisBlock.some(note => {
@@ -446,121 +457,97 @@ export default function DocumentBlock({
   
   // 确定块类型样式
   const getBlockStyle = () => {
-    switch(block.type) {
-      case 'transcription':
-        return styles.transcriptionBlock;
-      case 'note':
-        return styles.noteBlock;
-      default:
-        return styles.defaultBlock;
+    if (block.type === 'note') {
+      return {
+        ...styles.noteContainer,
+        backgroundColor: isDark 
+          ? 'rgba(245, 245, 245, 0.1)' 
+          : 'rgba(225, 245, 254, 0.7)',
+        borderLeftColor: isDark ? '#90CAF9' : '#2196F3',
+      };
     }
+    // 默认为转录块
+    return null;
   };
   
-  // 如果是笔记，使用新的注释风格渲染
+  // 如果是笔记块
   if (block.type === 'note') {
-    // 为笔记块添加高亮的引用文本显示
-    const hasReference = block.referencedText && block.referencedText.length > 0;
-    
     return (
-      <View style={[
-        styles.noteContainer,
-        active && styles.activeNoteBlock
-      ]}>
+      <View style={[getBlockStyle(), active && styles.activeBlock]}>
+        {/* 显示引用文本 */}
+        {block.referencedText && block.referencedText.trim() !== '' && (
+          <View style={[
+            styles.referencedTextContainer,
+            { 
+              backgroundColor: isDark 
+                ? 'rgba(76, 175, 80, 0.1)' 
+                : 'rgba(200, 230, 201, 0.5)',
+              borderLeftColor: isDark ? '#4CAF50' : '#388E3C' 
+            }
+          ]}>
+            <Text style={[
+              styles.referencedText,
+              { color: isDark ? '#bbbbbb' : '#333333' }
+            ]}>
+              {block.referencedText}
+            </Text>
+          </View>
+        )}
+        
+        {/* 笔记内容和操作 */}
         <View style={styles.noteContentWrapper}>
-          {/* 垂直三点菜单按钮 - 移到最顶部定义 */}
-          <TouchableOpacity 
-            ref={menuButtonRef}
-            style={styles.menuButton}
-            onPress={showMenu}
-          >
-            <Ionicons name="ellipsis-vertical" size={16} color="#666" />
-          </TouchableOpacity>
-          
-          {/* 显示引用的文本 */}
-          {hasReference && (
-            <View style={styles.referencedTextContainer}>
-              <Text style={styles.referencedText}>"{block.referencedText}"</Text>
+          {!isEditing && (
+            <View style={styles.contentContainer}>
+              <Text 
+                style={[
+                  styles.noteContent,
+                  { color: isDark ? '#dddddd' : '#212121' }
+                ]}
+                ref={textContainerRef}
+                onSelectionChange={handleSelectionChange}
+              >
+                {block.content}
+              </Text>
+              
+              {/* 垂直三点菜单按钮 */}
+              <TouchableOpacity 
+                ref={menuButtonRef}
+                style={[
+                  styles.menuButton,
+                  { backgroundColor: isDark ? 'rgba(70, 70, 70, 0.7)' : 'rgba(200, 200, 200, 0.7)' }
+                ]}
+                onPress={showMenu}
+              >
+                <Ionicons 
+                  name="ellipsis-vertical" 
+                  size={16} 
+                  color={isDark ? "#aaa" : "#333"} 
+                />
+              </TouchableOpacity>
             </View>
-          )}
-          
-          {/* 笔记内容 - 不显示"笔记"标签 */}
-          <Text style={styles.noteContent}>{block.content}</Text>
-          
-          {/* 操作菜单 */}
-          {menuVisible && (
-            <Modal
-              transparent
-              visible={menuVisible}
-              animationType="fade"
-              onRequestClose={() => setMenuVisible(false)}
-            >
-              <TouchableWithoutFeedback onPress={() => setMenuVisible(false)}>
-                <View style={styles.modalOverlay}>
-                  <View 
-                    style={[
-                      styles.actionMenu,
-                      {
-                        left: menuPosition.x - 110, // 调整菜单位置，向左偏移确保在按钮附近
-                        top: menuPosition.y + 10,  // 调整菜单位置，在按钮正下方
-                      }
-                    ]}
-                  >
-                    <TouchableOpacity 
-                      style={styles.actionOption}
-                      onPress={() => {
-                        setMenuVisible(false);
-                        setIsEditing(true);
-                      }}
-                    >
-                      <Ionicons name="pencil-outline" size={16} color="#666" />
-                      <Text style={styles.actionOptionText}>编辑</Text>
-                    </TouchableOpacity>
-                    
-                    <View style={styles.actionDivider} />
-                    
-                    <TouchableOpacity 
-                      style={styles.actionOption}
-                      onPress={() => {
-                        setMenuVisible(false);
-                        onDelete(block.id);
-                      }}
-                    >
-                      <Ionicons name="trash-outline" size={16} color="#FF453A" />
-                      <Text style={[styles.actionOptionText, {color: '#FF453A'}]}>删除</Text>
-                    </TouchableOpacity>
-                    
-                    <View style={styles.actionDivider} />
-                    
-                    <TouchableOpacity 
-                      style={styles.actionOption}
-                      onPress={() => {
-                        setMenuVisible(false);
-                        onAddEmptyNote && onAddEmptyNote(block.id);
-                      }}
-                    >
-                      <Ionicons name="add-circle-outline" size={16} color="#4CAF50" />
-                      <Text style={[styles.actionOptionText, {color: '#4CAF50'}]}>添加笔记</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </TouchableWithoutFeedback>
-            </Modal>
           )}
           
           {isEditing && (
             <View style={styles.editingContainer}>
               <TextInput
                 multiline
-                style={styles.editInput}
+                style={[
+                  styles.editInput,
+                  { color: isDark ? '#ffffff' : '#000000', backgroundColor: isDark ? '#333' : '#f5f5f5' }
+                ]}
                 value={editText}
                 onChangeText={setEditText}
                 autoFocus
-                placeholder="添加笔记..."
               />
               <View style={styles.editActions}>
                 <TouchableOpacity style={styles.editButton} onPress={handleCancel}>
-                  <Ionicons name="close-outline" size={22} color="#666" />
-                  <Text style={styles.editButtonText}>取消</Text>
+                  <Ionicons name="close-outline" size={22} color={isDark ? "#aaa" : "#666"} />
+                  <Text style={[
+                    styles.editButtonText, 
+                    { color: isDark ? "#aaa" : "#666" }
+                  ]}>
+                    取消
+                  </Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.editButton} onPress={handleSave}>
                   <Ionicons name="checkmark" size={22} color="#0A84FF" />
@@ -578,16 +565,28 @@ export default function DocumentBlock({
   return (
     <View style={[
       styles.transcriptionContainer,
+      { 
+        borderLeftColor: isDark ? '#444' : '#E0E0E0',
+        backgroundColor: isDark ? 'transparent' : '#FFFFFF' 
+      },
       active && styles.activeBlock
     ]}>
       <View style={styles.transcriptionHeader}>
         {/* 垂直三点菜单按钮 - 移到最右侧 */}
         <TouchableOpacity 
           ref={menuButtonRef}
-          style={[styles.menuButton, styles.transcriptionMenuButton]}
+          style={[
+            styles.menuButton, 
+            styles.transcriptionMenuButton,
+            { backgroundColor: isDark ? 'rgba(70, 70, 70, 0.7)' : 'rgba(200, 200, 200, 0.7)' }
+          ]}
           onPress={showMenu}
         >
-          <Ionicons name="ellipsis-vertical" size={16} color="#aaa" />
+          <Ionicons 
+            name="ellipsis-vertical" 
+            size={16} 
+            color={isDark ? "#aaa" : "#333"}
+          />
         </TouchableOpacity>
         
         {/* 说话者信息和时间戳 */}
@@ -596,8 +595,18 @@ export default function DocumentBlock({
             <Text style={styles.speakerInitial}>A</Text>
           </View>
           <View style={styles.speakerInfo}>
-            <Text style={styles.speakerName}>Speaker A</Text>
-            <Text style={styles.timestamp}>{formatTime(block.createdAt)}</Text>
+            <Text style={[
+              styles.speakerName,
+              { color: isDark ? '#ffffff' : '#000000' }
+            ]}>
+              Speaker A
+            </Text>
+            <Text style={[
+              styles.timestamp,
+              { color: isDark ? '#aaaaaa' : '#666666' }
+            ]}>
+              {formatTime(block.createdAt)}
+            </Text>
           </View>
         </View>
         
@@ -667,15 +676,23 @@ export default function DocumentBlock({
         <View style={styles.editingContainer}>
           <TextInput
             multiline
-            style={styles.editInput}
+            style={[
+              styles.editInput,
+              { color: isDark ? '#ffffff' : '#000000', backgroundColor: isDark ? '#333' : '#f5f5f5' }
+            ]}
             value={editText}
             onChangeText={setEditText}
             autoFocus
           />
           <View style={styles.editActions}>
             <TouchableOpacity style={styles.editButton} onPress={handleCancel}>
-              <Ionicons name="close-outline" size={22} color="#666" />
-              <Text style={styles.editButtonText}>取消</Text>
+              <Ionicons name="close-outline" size={22} color={isDark ? "#aaa" : "#666"} />
+              <Text style={[
+                styles.editButtonText, 
+                { color: isDark ? "#aaa" : "#666" }
+              ]}>
+                取消
+              </Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.editButton} onPress={handleSave}>
               <Ionicons name="checkmark" size={22} color="#0A84FF" />

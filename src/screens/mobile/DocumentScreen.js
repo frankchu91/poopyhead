@@ -21,6 +21,7 @@ import useDocumentLogic from '../../core/useDocumentLogic';
 import DocumentBlock from '../../components/document/DocumentBlock';
 import SpeechToTextService from '../../services/SpeechToTextService';
 import SummaryModal from '../../components/document/SummaryModal';
+import { useTheme, THEMES } from '../../context/ThemeContext';
 
 export default function DocumentScreen({ navigation, route }) {
   const {
@@ -53,6 +54,10 @@ export default function DocumentScreen({ navigation, route }) {
   const [newNoteId, setNewNoteId] = useState(null);
   const { documentId } = route.params || { documentId: 'test-doc-id' };
   const [showSummary, setShowSummary] = useState(false);
+  
+  // 主题
+  const { theme } = useTheme();
+  const isDark = theme === THEMES.DARK;
   
   // Refs
   const scrollViewRef = useRef(null);
@@ -399,22 +404,22 @@ export default function DocumentScreen({ navigation, route }) {
   };
   
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: isDark ? '#000000' : '#F5F5F7' }]}>
       {/* 标题栏 */}
-      <View style={styles.header}>
+      <View style={[styles.header, { borderBottomColor: isDark ? '#2C2C2E' : '#E5E5EA' }]}>
         <TouchableOpacity 
-          style={styles.backButton}
+          style={styles.backButton} 
           onPress={() => navigation.goBack()}
         >
-          <Ionicons name="chevron-back" size={24} color="#fff" />
+          <Ionicons name="chevron-back" size={24} color={isDark ? "#FFFFFF" : "#000000"} />
         </TouchableOpacity>
         
         <TextInput
-          style={styles.titleInput}
+          style={[styles.titleInput, { color: isDark ? '#FFFFFF' : '#000000' }]}
           value={document.metadata.title}
           onChangeText={setDocumentTitle}
           placeholder="未命名转录"
-          placeholderTextColor="#8E8E93"
+          placeholderTextColor={isDark ? "#8E8E93" : "#8A8A8E"}
         />
         
         <View style={styles.headerButtons}>
@@ -449,15 +454,17 @@ export default function DocumentScreen({ navigation, route }) {
       
       {/* 使用KeyboardAvoidingView包裹整个内容区域 */}
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.keyboardAvoidingContainer}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
         {/* 文档内容 */}
         <ScrollView 
           ref={scrollViewRef}
-          style={styles.documentContent}
+          style={[styles.documentContent, { backgroundColor: isDark ? '#000000' : '#F5F5F7' }]}
           contentContainerStyle={styles.documentContentContainer}
+          keyboardShouldPersistTaps="handled"
+          onTouchStart={dismissKeyboard}
         >
           {document.blocks.length === 0 ? (
             <View style={styles.emptyDocument}>
@@ -476,22 +483,25 @@ export default function DocumentScreen({ navigation, route }) {
                   block={block}
                   onUpdate={updateBlock}
                   onDelete={handleDeleteBlock}
-                  onAddNote={handleAddNoteToSelection}
-                  onAddEmptyNote={handleAddEmptyNote}
+                  onAddNote={(text, blockId, selectionRange) => handleAddNoteToSelection(text, blockId, selectionRange)}
                   active={currentTranscriptionSession.blockId === block.id}
                   autoFocus={block.id === newNoteId}
                   relatedNotes={getRelatedNotes(block.id)}
+                  onAddEmptyNote={handleAddEmptyNote}
                 />
               ))}
             </>
           )}
           
           {/* 底部间距，确保可以滚动到底部内容 */}
-          <View style={{ height: 20 }} />
+          <View style={styles.bottomPadding} />
         </ScrollView>
         
         {/* 底部输入区域 */}
-        <View style={styles.inputContainer}>
+        <View style={[
+          styles.inputContainer,
+          { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF', borderTopColor: isDark ? '#2C2C2E' : '#E5E5EA' }
+        ]}>
           {/* 键盘收起图标 - 只在键盘可见时显示 */}
           {isKeyboardVisible && (
             <TouchableOpacity 
@@ -538,9 +548,12 @@ export default function DocumentScreen({ navigation, route }) {
           
           <View style={styles.inputWrapper}>
             <TextInput
-              style={styles.noteInput}
+              style={[
+                styles.noteInput,
+                { backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7', color: isDark ? '#FFFFFF' : '#000000' }
+              ]}
               placeholder="添加笔记..."
-              placeholderTextColor="#8E8E93"
+              placeholderTextColor={isDark ? "#8E8E93" : "#8A8A8E"}
               value={noteText}
               onChangeText={setNoteText}
               multiline
@@ -552,7 +565,10 @@ export default function DocumentScreen({ navigation, route }) {
             />
             
             <TouchableOpacity 
-              style={styles.addNoteButton}
+              style={[
+                styles.addNoteButton,
+                noteText.trim() ? styles.addNoteButtonActive : null
+              ]}
               onPress={handleSendNote}
               disabled={!noteText.trim()}
             >
@@ -569,7 +585,10 @@ export default function DocumentScreen({ navigation, route }) {
       {/* 录音浮动按钮 - 只在未录音状态显示 */}
       {!isRecording && !isProcessingRecording && (
         <TouchableOpacity 
-          style={styles.floatingRecordButton}
+          style={[
+            styles.floatingRecordButton,
+            { backgroundColor: isDark ? '#FF3B30' : '#0A84FF' }
+          ]}
           onPress={toggleRecording}
           activeOpacity={0.8}
         >
@@ -594,7 +613,6 @@ export default function DocumentScreen({ navigation, route }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#1C1C1E',
   },
   header: {
     flexDirection: 'row',
@@ -602,8 +620,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#2C2C2E',
-    backgroundColor: '#1C1C1E',
   },
   backButton: {
     padding: 4,
@@ -614,7 +630,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginHorizontal: 16,
     padding: 0,
-    color: '#fff',
   },
   headerButtons: {
     flexDirection: 'row',
@@ -634,7 +649,6 @@ const styles = StyleSheet.create({
   },
   documentContent: {
     flex: 1,
-    backgroundColor: '#1C1C1E',
   },
   documentContentContainer: {
     padding: 16,
@@ -841,5 +855,8 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 13,
     fontWeight: '600',
+  },
+  bottomPadding: {
+    height: 80,
   },
 }); 

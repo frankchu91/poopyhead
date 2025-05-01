@@ -12,6 +12,7 @@ import UploadScreen from './screens/UploadScreen';
 import MobileChatScreen from './src/screens/mobile/ChatScreen';
 import WebChatScreen from './src/screens/web/ChatScreen';
 import DocumentScreen from './src/screens/mobile/DocumentScreen';
+import { ThemeProvider } from './src/context/ThemeContext';
 
 const Stack = createStackNavigator();
 
@@ -30,69 +31,71 @@ function App() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <View style={[styles.container, containerStyle]}>
-        <NavigationContainer>
-          <Stack.Navigator initialRouteName="Home">
-            <Stack.Screen 
-              name="Home" 
-              component={HomeScreen}
-              options={{
-                headerShown: false
-              }}
-            />
-            <Stack.Screen 
-              name="Camera" 
-              component={CameraScreen} 
-              options={{
-                title: '拍照',
-                headerStyle: { backgroundColor: '#1C1C1E' },
-                headerTintColor: '#fff',
-              }}
-            />
-            <Stack.Screen 
-              name="NewNote" 
-              component={NewNoteScreen} 
-              options={{
-                title: 'New Note',
-                headerStyle: { backgroundColor: '#1C1C1E' },
-                headerTintColor: '#fff',
-              }}
-            />
-            <Stack.Screen 
-              name="VoiceNote" 
-              component={VoiceNoteScreen} 
-              options={{
-                title: 'Voice Note',
-                headerStyle: { backgroundColor: '#1C1C1E' },
-                headerTintColor: '#fff',
-              }}
-            />
-            <Stack.Screen 
-              name="Upload" 
-              component={UploadScreen} 
-              options={{
-                title: 'Choose Photo',
-                headerStyle: { backgroundColor: '#1C1C1E' },
-                headerTintColor: '#fff',
-              }}
-            />
-            <Stack.Screen 
-              name="Chat" 
-              component={ChatScreenComponent}
-              options={{
-                headerShown: false,
-              }}
-            />
-            <Stack.Screen 
-              name="Document" 
-              component={DocumentScreen}
-              options={{
-                headerShown: false,
-              }}
-            />
-          </Stack.Navigator>
-        </NavigationContainer>
-      </View>
+      <ThemeProvider>
+        <View style={[styles.container, containerStyle]}>
+          <NavigationContainer>
+            <Stack.Navigator initialRouteName="Home">
+              <Stack.Screen 
+                name="Home" 
+                component={HomeScreen}
+                options={{
+                  headerShown: false
+                }}
+              />
+              <Stack.Screen 
+                name="Camera" 
+                component={CameraScreen} 
+                options={{
+                  title: '拍照',
+                  headerStyle: { backgroundColor: '#1C1C1E' },
+                  headerTintColor: '#fff',
+                }}
+              />
+              <Stack.Screen 
+                name="NewNote" 
+                component={NewNoteScreen} 
+                options={{
+                  title: 'New Note',
+                  headerStyle: { backgroundColor: '#1C1C1E' },
+                  headerTintColor: '#fff',
+                }}
+              />
+              <Stack.Screen 
+                name="VoiceNote" 
+                component={VoiceNoteScreen} 
+                options={{
+                  title: 'Voice Note',
+                  headerStyle: { backgroundColor: '#1C1C1E' },
+                  headerTintColor: '#fff',
+                }}
+              />
+              <Stack.Screen 
+                name="Upload" 
+                component={UploadScreen} 
+                options={{
+                  title: 'Choose Photo',
+                  headerStyle: { backgroundColor: '#1C1C1E' },
+                  headerTintColor: '#fff',
+                }}
+              />
+              <Stack.Screen 
+                name="Chat" 
+                component={ChatScreenComponent}
+                options={{
+                  headerShown: false,
+                }}
+              />
+              <Stack.Screen 
+                name="Document" 
+                component={DocumentScreen}
+                options={{
+                  headerShown: false,
+                }}
+              />
+            </Stack.Navigator>
+          </NavigationContainer>
+        </View>
+      </ThemeProvider>
     </GestureHandlerRootView>
   );
 }

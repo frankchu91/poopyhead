@@ -11,12 +11,15 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useTheme, THEMES } from '../src/context/ThemeContext';
 
 export default function HomeScreen({ navigation }) {
   const [notes, setNotes] = useState([]);
   const [isModalVisible, setModalVisible] = useState(false);
   const [activeTab, setActiveTab] = useState('home');
   const modalAnimation = useRef(new Animated.Value(0)).current;
+  const { theme, toggleTheme } = useTheme();
+  const isDark = theme === THEMES.DARK;
 
   useEffect(() => {
     loadNotes();
@@ -57,13 +60,27 @@ export default function HomeScreen({ navigation }) {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF' }]}>
       {/* 顶部标题和用户图标 */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Loose Note</Text>
-        <TouchableOpacity style={styles.profileButton}>
-          <Ionicons name="person-circle" size={28} color="#fff" />
-        </TouchableOpacity>
+      <View style={[styles.header, { borderBottomColor: isDark ? '#2C2C2E' : '#E5E5EA' }]}>
+        <Text style={[styles.headerTitle, { color: isDark ? '#fff' : '#000' }]}>Loose Note</Text>
+        <View style={styles.headerButtons}>
+          {/* 添加主题切换按钮 */}
+          <TouchableOpacity style={styles.themeButton} onPress={toggleTheme}>
+            <Ionicons 
+              name={isDark ? "sunny" : "moon"} 
+              size={24} 
+              color={isDark ? "#FFF" : "#000"} 
+            />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.profileButton}>
+            <Ionicons 
+              name="person-circle" 
+              size={28} 
+              color={isDark ? "#fff" : "#000"} 
+            />
+          </TouchableOpacity>
+        </View>
       </View>
       
       {/* 笔记列表 */}
@@ -73,14 +90,14 @@ export default function HomeScreen({ navigation }) {
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
           <TouchableOpacity 
-            style={styles.noteItem}
+            style={[styles.noteItem, { borderBottomColor: isDark ? '#2C2C2E' : '#E5E5EA' }]}
             onPress={() => navigation.navigate('NewNote', { note: item, isEditing: true })}
           >
             <View style={styles.noteContent}>
-              <Text style={styles.noteTitle} numberOfLines={1}>
+              <Text style={[styles.noteTitle, { color: isDark ? '#fff' : '#000' }]} numberOfLines={1}>
                 {item.title || 'Untitled Note'}
               </Text>
-              <Text style={styles.noteDate}>
+              <Text style={[styles.noteDate, { color: isDark ? '#8E8E93' : '#8A8A8E' }]}>
                 {new Date(item.date).toLocaleDateString()}
               </Text>
             </View>
@@ -88,13 +105,13 @@ export default function HomeScreen({ navigation }) {
         )}
         ListEmptyComponent={
           <View style={styles.emptyState}>
-            <Text style={styles.emptyStateText}>No notes yet</Text>
+            <Text style={[styles.emptyStateText, { color: isDark ? '#8E8E93' : '#8A8A8E' }]}>No notes yet</Text>
           </View>
         }
       />
 
       {/* 底部导航栏 */}
-      <View style={styles.bottomNav}>
+      <View style={[styles.bottomNav, { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF', borderTopColor: isDark ? '#2C2C2E' : '#E5E5EA' }]}>
         <TouchableOpacity 
           style={styles.navItem} 
           onPress={() => setActiveTab('home')}
@@ -102,10 +119,11 @@ export default function HomeScreen({ navigation }) {
           <Ionicons 
             name={activeTab === 'home' ? "home" : "home-outline"} 
             size={24} 
-            color={activeTab === 'home' ? "#007AFF" : "#fff"} 
+            color={activeTab === 'home' ? "#007AFF" : (isDark ? "#fff" : "#000")} 
           />
           <Text style={[
             styles.navText, 
+            { color: isDark ? '#fff' : '#000' },
             activeTab === 'home' && styles.navTextActive
           ]}>Home</Text>
         </TouchableOpacity>
@@ -126,10 +144,11 @@ export default function HomeScreen({ navigation }) {
           <Ionicons 
             name={activeTab === 'search' ? "search" : "search-outline"} 
             size={24} 
-            color={activeTab === 'search' ? "#007AFF" : "#fff"} 
+            color={activeTab === 'search' ? "#007AFF" : (isDark ? "#fff" : "#000")} 
           />
           <Text style={[
             styles.navText, 
+            { color: isDark ? '#fff' : '#000' },
             activeTab === 'search' && styles.navTextActive
           ]}>Search</Text>
         </TouchableOpacity>
@@ -151,6 +170,7 @@ export default function HomeScreen({ navigation }) {
             style={[
               styles.modalContent,
               {
+                backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7',
                 transform: [
                   {
                     translateY: modalAnimation.interpolate({
@@ -169,8 +189,8 @@ export default function HomeScreen({ navigation }) {
                 navigation.navigate('Camera');
               }}
             >
-              <Ionicons name="camera" size={24} color="#fff" />
-              <Text style={styles.modalOptionText}>Take Photo</Text>
+              <Ionicons name="camera" size={24} color={isDark ? "#fff" : "#000"} />
+              <Text style={[styles.modalOptionText, { color: isDark ? "#fff" : "#000" }]}>Take Photo</Text>
             </TouchableOpacity>
 
             <TouchableOpacity 
@@ -180,8 +200,8 @@ export default function HomeScreen({ navigation }) {
                 navigation.navigate('Upload');
               }}
             >
-              <Ionicons name="image" size={24} color="#fff" />
-              <Text style={styles.modalOptionText}>Choose from Gallery</Text>
+              <Ionicons name="image" size={24} color={isDark ? "#fff" : "#000"} />
+              <Text style={[styles.modalOptionText, { color: isDark ? "#fff" : "#000" }]}>Choose from Gallery</Text>
             </TouchableOpacity>
 
             <TouchableOpacity 
@@ -191,8 +211,8 @@ export default function HomeScreen({ navigation }) {
                 navigation.navigate('NewNote');
               }}
             >
-              <Ionicons name="create" size={24} color="#fff" />
-              <Text style={styles.modalOptionText}>Text Note</Text>
+              <Ionicons name="create" size={24} color={isDark ? "#fff" : "#000"} />
+              <Text style={[styles.modalOptionText, { color: isDark ? "#fff" : "#000" }]}>Text Note</Text>
             </TouchableOpacity>
 
             <TouchableOpacity 
@@ -202,8 +222,8 @@ export default function HomeScreen({ navigation }) {
                 navigation.navigate('VoiceNote');
               }}
             >
-              <Ionicons name="mic" size={24} color="#fff" />
-              <Text style={styles.modalOptionText}>Voice Note</Text>
+              <Ionicons name="mic" size={24} color={isDark ? "#fff" : "#000"} />
+              <Text style={[styles.modalOptionText, { color: isDark ? "#fff" : "#000" }]}>Voice Note</Text>
             </TouchableOpacity>
           </Animated.View>
         </TouchableOpacity>
@@ -215,7 +235,6 @@ export default function HomeScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#1C1C1E',
   },
   header: {
     flexDirection: 'row',
@@ -223,12 +242,18 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#2C2C2E',
   },
   headerTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#fff',
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  themeButton: {
+    padding: 4,
+    marginRight: 12,
   },
   profileButton: {
     padding: 4,
@@ -239,7 +264,6 @@ const styles = StyleSheet.create({
   noteItem: {
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#2C2C2E',
   },
   noteContent: {
     flexDirection: 'row',
@@ -248,12 +272,10 @@ const styles = StyleSheet.create({
   },
   noteTitle: {
     fontSize: 16,
-    color: '#fff',
-    flex: 1,
+    fontWeight: '500',
   },
   noteDate: {
-    fontSize: 12,
-    color: '#8E8E93',
+    fontSize: 14,
   },
   emptyState: {
     flex: 1,
@@ -262,40 +284,35 @@ const styles = StyleSheet.create({
     padding: 32,
   },
   emptyStateText: {
-    color: '#8E8E93',
     fontSize: 16,
+    textAlign: 'center',
   },
   bottomNav: {
     flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    paddingVertical: 8,
     borderTopWidth: 1,
-    borderTopColor: '#2C2C2E',
-    backgroundColor: '#1C1C1E',
-    paddingBottom: 8,
-    paddingTop: 8,
-    height: 60,
   },
   navItem: {
-    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  newButton: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: '#000',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#fff',
+    padding: 8,
   },
   navText: {
     fontSize: 12,
-    color: '#fff',
     marginTop: 4,
   },
   navTextActive: {
     color: '#007AFF',
+  },
+  newButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#007AFF',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   modalOverlay: {
     flex: 1,
@@ -303,10 +320,10 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: '#2C2C2E',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
+    paddingTop: 16,
+    paddingBottom: 32,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
   },
   modalOption: {
     flexDirection: 'row',
@@ -314,7 +331,6 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   modalOptionText: {
-    color: '#fff',
     fontSize: 16,
     marginLeft: 16,
   },
